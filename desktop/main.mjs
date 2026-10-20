@@ -39,8 +39,9 @@ function findAdpk() {
   return [saved, ...around, join(homedir(), 'ad-production-kit'), join(homedir(), 'Projects', 'ad-production-kit')].find(isAdpk);
 }
 
+// Asked in the app's window, so it can't hide behind other apps' windows.
 async function chooseAdpk() {
-  const { response } = await dialog.showMessageBox({
+  const { response } = await dialog.showMessageBox(win, {
     type: 'question',
     message: 'Where is Ad Production Kit?',
     detail: 'Pick its folder. If it isn’t on this Mac yet, install it first: Install opens Terminal with the install command. Open this app again once it finishes.',
@@ -51,7 +52,7 @@ async function chooseAdpk() {
     return null;
   }
   if (response !== 0) return null;
-  const { filePaths } = await dialog.showOpenDialog({ properties: ['openDirectory'] });
+  const { filePaths } = await dialog.showOpenDialog(win, { properties: ['openDirectory'] });
   if (isAdpk(filePaths[0])) return filePaths[0];
   if (filePaths[0]) dialog.showErrorBox('Not an Ad Production Kit folder', 'That folder has no Studio with the chat. Pick the ad-production-kit folder, updated to the latest version.');
   return null;
@@ -133,15 +134,16 @@ function menu() {
 }
 
 async function open() {
-  adpk = findAdpk() || await chooseAdpk();
-  if (!adpk) return app.quit();
-  writeFileSync(config, JSON.stringify({ adpk }));
-
   win = new BrowserWindow({ width: 1440, height: 900, minWidth: 900, minHeight: 600, title: 'Ad Production Kit', backgroundColor: '#fafaf9' });
   // Links that leave Studio open in the browser.
   win.webContents.setWindowOpenHandler(({ url }) => { shell.openExternal(url); return { action: 'deny' }; });
   win.on('closed', () => { win = null; });
   await win.loadURL(loading('Starting Studio…'));
+  app.focus({ steal: true });
+
+  adpk = findAdpk() || await chooseAdpk();
+  if (!adpk) return app.quit();
+  writeFileSync(config, JSON.stringify({ adpk }));
 
   try {
     const url = await startStudio(adpk, (line) => {
