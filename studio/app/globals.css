@@ -892,6 +892,58 @@ textarea.ed__add { display: block; width: 100%; min-height: 36px; padding: 8px 4
   .vw__side { width: 340px; }
 }
 
+/* ---- Studio and the chat side by side (/app) ---- */
+.split { display: grid; grid-template-columns: minmax(0, 1fr) auto var(--chat-w); height: 100vh; }
+.split__pane { display: block; width: 100%; height: 100%; border: 0; }
+.split__line { position: relative; width: 1px; background: var(--line); cursor: col-resize; touch-action: none; }
+.split__line::before { content: ""; position: absolute; inset: 0 -4px; }
+.split[data-dragging] { cursor: col-resize; user-select: none; }
+.split[data-dragging] .split__pane { pointer-events: none; }
+
+/* ---- Chat (/chat): the agent beside Studio ---- */
+.chat { display: flex; flex-direction: column; height: 100vh; background: var(--bg); }
+.chat__bar { display: flex; align-items: center; gap: 8px; height: var(--bar-h); flex: none; padding: 0 12px 0 16px; background: var(--bg-subtle); border-bottom: 1px solid var(--line); }
+.chat__pick { position: relative; flex: 1; min-width: 0; display: flex; align-items: center; }
+.chat__title { font-size: var(--text-sm); font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.chat__select { position: absolute; inset: 0; width: 100%; opacity: 0; cursor: pointer; font: inherit; }
+.chat__log { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; padding: 16px; }
+.chat__log .md { font-size: var(--text-sm); color: var(--fg); }
+.chat__log pre, .chat__out { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: var(--text-xs); line-height: 1.5; white-space: pre-wrap; word-break: break-word; }
+.chat__log .md pre { padding: 8px 10px; background: var(--bg-subtle); border-radius: var(--radius-sm); }
+.chat__empty { margin: auto 0; text-align: center; color: var(--muted); font-size: var(--text-sm); }
+.chat__you { align-self: flex-end; max-width: 85%; padding: 6px 10px 7px; border-radius: var(--radius); border-bottom-right-radius: var(--radius-sm); background: var(--fill-strong); font-size: var(--text-sm); white-space: pre-wrap; }
+.chat__tool-row { display: flex; align-items: center; gap: 8px; width: 100%; padding: 2px 0; border: 0; background: none; font: inherit; font-size: var(--text-xs); color: var(--muted); text-align: left; cursor: pointer; }
+.chat__tool-row:hover { color: var(--fg); }
+.chat__tool-name { flex: none; font-weight: 500; }
+.chat__tool-what { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.chat__tool .chat__out { margin-top: 4px; max-height: 16rem; overflow: auto; padding: 8px 10px; color: var(--muted-emphasis); background: var(--bg-subtle); border-radius: var(--radius-sm); }
+.chat__line { font-size: var(--text-xs); color: var(--muted); }
+.chat__ask { display: grid; gap: 8px; padding: 10px 12px; border-radius: var(--radius); box-shadow: var(--shadow-border); font-size: var(--text-sm); }
+.chat__ask-title { font-weight: 500; }
+.chat__ask .chat__out { max-height: 10rem; overflow: auto; color: var(--muted-emphasis); }
+.chat__ask-actions { display: flex; gap: 8px; }
+.chat__error { padding: 8px 10px; border-radius: var(--radius-sm); background: var(--fill); font-size: var(--text-sm); white-space: pre-wrap; }
+.chat__error p { margin-top: 4px; }
+.chat__compose { flex: none; display: grid; gap: 6px; padding: 0 12px 12px; }
+.chat__page { font-size: var(--text-xs); color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.chat__field { position: relative; }
+.chat__field textarea {
+  display: block; width: 100%; min-height: 64px; max-height: 40vh; field-sizing: content;
+  padding: 10px 44px 10px 12px; resize: none; outline: none;
+  font: inherit; font-size: var(--text-sm); line-height: 1.45; color: var(--fg);
+  background: var(--bg); border: 0; border-radius: var(--radius); box-shadow: var(--shadow-border);
+  transition: box-shadow var(--dur) var(--ease-out);
+}
+.chat__field textarea:focus { box-shadow: var(--shadow-border-hover); }
+.chat__send {
+  position: absolute; right: 8px; bottom: 8px; display: grid; place-items: center; width: 28px; height: 28px;
+  border: 0; border-radius: 50%; background: var(--fg); color: var(--bg); cursor: pointer;
+  transition: opacity var(--dur) var(--ease-out), transform var(--dur-press) var(--ease-out);
+}
+.chat__send:disabled { opacity: 0.3; cursor: default; }
+.chat__send:active:not(:disabled) { transform: scale(0.97); }
+.chat__send svg { width: 14px; height: 14px; }
+
 /* Toast */
 .toast {
   position: fixed; bottom: 16px; z-index: 130;

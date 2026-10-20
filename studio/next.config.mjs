@@ -10,6 +10,8 @@ const nextConfig = {
   // Brand files are read via runtime paths; stop the tracer globbing the app dir.
   outputFileTracingExcludes: { '*': ['./**'] },
   turbopack: { root: appDir },
+  // The chat's SDK starts Claude Code from its own package folder, so it must not be bundled.
+  serverExternalPackages: ['@anthropic-ai/claude-agent-sdk'],
   agentRules: false, // dev mode would otherwise write studio/AGENTS.md
 };
 
