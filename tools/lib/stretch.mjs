@@ -1,6 +1,6 @@
-// stretch.mjs — a file's sound at another speed with its pitch kept (ffmpeg atempo). The edit engine fetches it
-// (`…tempo=<rate>`) from Studio's file route and from edit-video's export server alike, so preview and export
-// play the same audio. Made once per file version and rate, cached outside the brand. Keeps file time: a track
+// stretch.mjs — a file's sound at another speed with its pitch kept (ffmpeg atempo), or at its own speed (a video's
+// sound alone, far smaller than the video). The edit engine fetches it (`…tempo=<rate>` or `…sound=1`) from Studio's
+// file route and from edit-video's export server alike, so preview and export play the same audio. Made once per file version and rate, cached outside the brand. Keeps file time: a track
 // that starts after the file does is padded to its start first, so source time t sits at t / rate.
 import { cachedFile, runAsync } from './catalog.mjs';
 
@@ -17,6 +17,9 @@ export function tempoOf(q) {
   const r = Math.round(+q * 1e4) / 1e4;
   return r > 0.1 && r < 10 && r !== 1 ? r : null;
 }
+
+// The rate a request's query asks the sound at (1 for sound=1), else null: the file itself.
+export const soundRate = (q) => tempoOf(q.get('tempo')) || (q.has('sound') ? 1 : null);
 
 // Path of abs's sound at `rate` (lossless FLAC).
 // -copyts keeps the file's own clock (without it, time starts at the first frame).

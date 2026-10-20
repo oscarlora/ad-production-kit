@@ -43,6 +43,10 @@ export async function fileResponse(req, abs) {
   const { mimeOf } = await catalogLib();
   const size = st.size;
   const type = mimeOf(abs);
+  // The browser keeps what it fetched and asks again with this tag; an unchanged file answers 304, with no body.
+  const etag = `"${size.toString(36)}-${Math.round(st.mtimeMs).toString(36)}"`;
+  const cache = { ETag: etag, 'Last-Modified': st.mtime.toUTCString(), 'Cache-Control': 'no-cache' };
+  if (req.headers.get('if-none-match') === etag) return new Response(null, { status: 304, headers: cache });
   const range = req.headers.get('range');
   let start = 0, end = size - 1;
   if (range) {
@@ -59,7 +63,8 @@ export async function fileResponse(req, abs) {
       'Content-Type': type,
       'Accept-Ranges': 'bytes',
       'Content-Length': String(end - start + 1),
-      ...(range ? { 'Content-Range': `bytes ${start}-${end}/${size}` } : { 'Cache-Control': 'no-cache' }),
+      ...cache,
+      ...(range ? { 'Content-Range': `bytes ${start}-${end}/${size}` } : {}),
     },
   });
 }

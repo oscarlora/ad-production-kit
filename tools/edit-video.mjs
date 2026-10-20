@@ -9,7 +9,7 @@ import { basename, dirname, join, relative, resolve, sep } from 'node:path';
 import { tmpdir } from 'node:os';
 import { brandDirFrom, die, ffprobeJson, loudness, markEditing, mimeOf, parseArgs, readEditing, round, run, sessionId, typeOf, usage } from './lib/catalog.mjs';
 import { compose, eachKeyed, endOf, keyed, r3, val } from '../studio/engine/doc.js';
-import { atempo, stretched, tempoOf } from './lib/stretch.mjs';
+import { atempo, soundRate, stretched } from './lib/stretch.mjs';
 import { fetchMissing } from './lib/r2.mjs';
 import { hear, vocabulary } from './lib/transcribe.mjs';
 
@@ -466,7 +466,7 @@ async function runPage(planPath, query, outPath, { timeout = 1800, onProgress } 
     if (!u.pathname.startsWith('/f/') || !allowed.some((d) => file === d || file.startsWith(d + sep))) return res.writeHead(403).end();
     let st;
     try { st = statSync(file); } catch { return res.writeHead(404).end(); }
-    const rate = tempoOf(u.searchParams.get('tempo')); // the sound at that speed, pitch kept: the same file Studio serves
+    const rate = soundRate(u.searchParams); // the sound alone or at another speed: the same file Studio serves
     if (rate) { try { file = await stretched(file, rate); st = statSync(file); } catch (e) { return res.writeHead(500).end(String(e.message)); } }
     const m = /bytes=(\d*)-(\d*)/.exec(req.headers.range || '');
     const head = { 'Content-Type': mimeOf(file), 'Accept-Ranges': 'bytes', 'Access-Control-Allow-Origin': '*' };

@@ -20,6 +20,13 @@ export const mediaUrl = (ws, brand, p) => fileUrl(ws, brand, mediaPath(p));
 export const mediaType = (p) => (/\.(png|jpe?g|webp|gif|avif)$/i.test(p) ? 'image' : /\.(mp4|mov|m4v|webm)$/i.test(p) ? 'video'
   : /\.(mp3|wav|m4a|aac|flac|ogg|opus)$/i.test(p) ? 'audio' : '');
 
+// A file's sound: a video's as the server's sound-only copy (sound=1), not the whole video. u: a file URL, its path
+// in ?p= (Studio) or the URL path (the export server).
+export const soundUrl = (u) => {
+  const url = new URL(u, 'http://x');
+  return mediaType(url.searchParams.get('p') || decodeURIComponent(url.pathname)) === 'video' ? `${u}${u.includes('?') ? '&' : '?'}sound=1` : u;
+};
+
 // A 404 without a JSON error means the server isn't serving the route (dev route-table drift): say restart.
 const MISSING_ROUTE = 'Studio needs a restart: the server is not serving this part of the app. Stop it and run it again, then try once more.';
 

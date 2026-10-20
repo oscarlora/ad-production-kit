@@ -1,5 +1,6 @@
 // Media access: frame-exact video decode (WebCodecs via mediabunny), images, decoded audio, fonts.
 import { ALL_FORMATS, Input, UrlSource, VideoSampleSink } from 'mediabunny';
+import { soundUrl } from '../lib/client/api.js';
 
 const EPS = 1e-6;
 
@@ -111,10 +112,10 @@ export class Media {
     return this.images.get(key);
   }
 
-  // Decoded sound of a file (an audio file or a video's track), shared by preview and export. At a rate other
-  // than 1 it's the server's pitch-kept copy at that speed (tempo=), so source time t sits at t / rate.
+  // Decoded sound of a file (an audio file or a video's track, fetched alone: soundUrl), shared by preview and export.
+  // At a rate other than 1 it's the server's pitch-kept copy at that speed (tempo=), so source time t sits at t / rate.
   sound(src, ctx, rate = 1) {
-    const u = this.url(src), key = rate === 1 ? u : `${u}${u.includes('?') ? '&' : '?'}tempo=${rate}`;
+    const u = this.url(src), key = rate === 1 ? soundUrl(u) : `${u}${u.includes('?') ? '&' : '?'}tempo=${rate}`;
     if (!this.audio.has(key)) {
       const p = (async () => {
         const r = await fetch(key);

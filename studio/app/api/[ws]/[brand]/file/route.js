@@ -1,7 +1,8 @@
 // Serves a brand file by brand-relative path (?p=…); paths outside the brand dir and the shared library 403.
 // A media original missing locally (light sync) redirects to a presigned R2 URL when creds exist.
 // &w=<px> serves an image fit within px instead: made once per file version, cached outside the brand.
-// &tempo=<rate> serves its sound at that speed, pitch kept (tools/lib/stretch.mjs, as the export does).
+// &tempo=<rate> serves its sound at that speed, pitch kept, and &sound=1 its sound alone (tools/lib/stretch.mjs, as the
+// export does).
 import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { within } from '../../../../../lib/server/brands.js';
@@ -31,8 +32,8 @@ export const GET = brandRoute(async (req, ctx) => {
     const r2 = await r2For(ctx.ws).catch(() => null);
     if (r2) return Response.redirect(r2.presignGet(`${ctx.brand}/${relPosix}`, 3600), 302);
   }
-  const { stretched, tempoOf } = await stretchLib();
-  const rate = tempoOf(q.get('tempo'));
+  const { stretched, soundRate } = await stretchLib();
+  const rate = soundRate(q);
   if (rate && !existsSync(abs)) return jsonRes({ error: 'not found' }, 404);
   try {
     return fileResponse(req, rate ? await stretched(abs, rate) : q.get('w') ? await fitted(abs, +q.get('w') || 800) : abs);

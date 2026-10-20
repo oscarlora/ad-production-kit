@@ -3,6 +3,7 @@
 // library's `_catalog/peaks/<id>.json` when `peaks` names one, else from decoding `src` in the browser.
 // `from`/`to` (seconds of the source) draw only that stretch (stored peaks need the source's `dur` for it); `bottom` grows the bars up from the bottom.
 import { useEffect, useReducer, useRef, useState } from 'react';
+import { soundUrl } from '../lib/client/api.js';
 
 const RATE = 50; // decoded peaks per second
 const cache = new Map();
@@ -10,8 +11,9 @@ const once = (key, load) => { if (!cache.has(key)) cache.set(key, load().catch((
 
 // { peaks: 0–1, dur: seconds or null }, or null when there's nothing to draw.
 const decode = (src) => once(src, async () => {
-  const audio = await new OfflineAudioContext(1, 1, 44100).decodeAudioData(await (await fetch(src)).arrayBuffer());
-  const lead = await (await import('../engine/media.js')).audioLead(src); // so peak times are file times
+  const u = soundUrl(src);
+  const audio = await new OfflineAudioContext(1, 1, 44100).decodeAudioData(await (await fetch(u)).arrayBuffer());
+  const lead = await (await import('../engine/media.js')).audioLead(u); // so peak times are file times
   const d = audio.getChannelData(0), step = Math.max(1, Math.floor(audio.sampleRate / RATE)), peaks = Array(Math.round(lead * RATE)).fill(0);
   for (let i = 0; i < d.length; i += step) {
     let m = 0;
