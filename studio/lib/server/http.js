@@ -36,6 +36,11 @@ function refuseForeign(req) {
 // brandRoute for non-GET handlers.
 export const brandPost = (handler) => brandRoute((req, ctx) => refuseForeign(req) || handler(req, ctx));
 
+// A guarded write outside a brand (the chat).
+export const localPost = (handler) => async (req, ctx) => {
+  try { return refuseForeign(req) || await handler(req, ctx); } catch (e) { return jsonRes({ error: String(e?.message || e) }, 500); }
+};
+
 export async function fileResponse(req, abs) {
   let st = null;
   try { st = abs && statSync(abs); } catch {}

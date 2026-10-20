@@ -1,4 +1,5 @@
 import { Inter } from 'next/font/google';
+import PageLink from '../components/chat/PageLink.js';
 import { BrandsProvider } from '../components/Switcher.js';
 import { listBrands } from '../lib/server/brands.js';
 import './globals.css';
@@ -18,6 +19,7 @@ export default function RootLayout({ children }) {
       <body>
         <BrandsProvider brands={brands} error={error}>
           <main className="page">{children}</main>
+          <PageLink />
         </BrandsProvider>
       </body>
     </html>

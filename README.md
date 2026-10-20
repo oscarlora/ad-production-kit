@@ -86,6 +86,12 @@ ADPK works inside your AI agent: you talk to the agent, and it uses ADPK to make
 
 Then say *"Let's make an ad for &lt;your brand's website&gt;"* or whatever you want to do.
 
+**Mac app (optional, Claude only):** Studio and a chat with the agent in one window, on your Claude
+subscription. Download the `.dmg` from [Releases](https://github.com/oscarlora/ad-production-kit/releases),
+drag the app into Applications and open it: it installs ADPK when it's missing, and **Sign in to Claude…** in
+its menu signs you in. It isn't signed by Apple yet, so the first time macOS blocks it: open System Settings ▸
+Privacy & Security and click **Open Anyway**. To build it yourself: `cd desktop && npm install && npm run build`.
+
 *For the AI agent:* install with
 `curl -fsSL https://raw.githubusercontent.com/oscarlora/ad-production-kit/main/tools/setup.sh | bash`
 (on Windows, clone this repo and run `tools\setup.ps1`), then follow
@@ -111,6 +117,7 @@ Then say *"Let's make an ad for &lt;your brand's website&gt;"* or whatever you w
 - `skills/` — step-by-step procedures, one folder per skill
 - `tools/` — the scripts the agent runs (each has `--help`)
 - `studio/` — the local web app
+- `desktop/` — the Mac app: Studio and the agent chat in one window
 - `workspaces/` — your brands, never committed; local, or synced to the workspace's R2 bucket
 
 ## License

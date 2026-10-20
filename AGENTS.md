@@ -66,7 +66,8 @@ workspace's R2 bucket when it has one (see Operating principles).
 
     skills/   # one folder per skill: skills/<name>/SKILL.md
     tools/    # scripts; each documents its usage (--help)
-    studio/   # the local web app: Board · Media · Swipe · Workflow (node studio/dev.mjs)
+    studio/   # the local web app: Board · Media · Swipe · Workflow (node studio/dev.mjs), and /chat: you, run by the Agent SDK
+    desktop/  # the Mac app: Studio and the chat side by side (Studio's /app page)
     .env      # per-workspace keys (<WS>_…; see .env.example). Other than the kie key at setup, the user
               # pastes keys into the file, not chat. Read keys from disk only and never echo them.
 

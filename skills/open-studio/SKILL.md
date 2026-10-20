@@ -23,6 +23,9 @@ without one, `open <url>` (`start <url>` on Windows). For an ad, open its own pa
 (`/<Workspace>/<Brand>/workflow/<ID>`, which survives a folder rename), not the list.
 Deps install via `tools/setup.sh` / `setup.ps1` (or `npm install --prefix studio` once).
 
+When you run inside Studio's chat (the Mac app, or `/app` in a browser), Studio is already open
+beside you: show a page with the `open_page` tool instead of launching anything.
+
 ## Pages
 
 - **Board** — the ad records (`outputs/json/*.json`) and batch plans (`outputs/batches/*.json`) by

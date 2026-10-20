@@ -1,0 +1,30 @@
+{
+  "name": "ad-production-kit-desktop",
+  "productName": "Ad Production Kit",
+  "private": true,
+  "version": "0.1.0",
+  "description": "The Mac app: Studio and the agent chat in one window, running this computer's ADPK folder.",
+  "license": "MIT",
+  "main": "main.mjs",
+  "scripts": {
+    "start": "electron .",
+    "build": "electron-builder --mac --universal"
+  },
+  "devDependencies": {
+    "electron": "44.5.1",
+    "electron-builder": "26.17.0"
+  },
+  "build": {
+    "appId": "com.adproductionkit.desktop",
+    "productName": "Ad Production Kit",
+    "files": [
+      "main.mjs",
+      "package.json"
+    ],
+    "mac": {
+      "category": "public.app-category.productivity",
+      "target": "dmg"
+    },
+    "artifactName": "Ad-Production-Kit-${version}.${ext}"
+  }
+}

@@ -7,3 +7,6 @@ workspaces/
 
 # Machine-specific Claude Code launch configs (brand/port entries differ per machine).
 .claude/launch.json
+
+# The Mac app build (desktop/).
+desktop/dist/
