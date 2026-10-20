@@ -13,7 +13,7 @@ calm, built for scanning many ads fast.
 ## Colors
 
 - Surfaces: `--bg` content · `--bg-subtle` viewer stage and empty frames · `--fill` segmented-control
-  tracks and hover · `--fill-soft` the editor timeline's track bands · `--fill-strong` pressed and timeline clips · `--media-bg` behind media ·
+  tracks, hover and timeline clips · `--fill-soft` hover on editable blocks · `--fill-strong` pressed · `--media-bg` behind media ·
   `--glass` the translucent white of bars and controls floating over media
 - Text: `--fg` primary (`--fg-hover` on the primary button) · `--muted-emphasis` body in tables and
   panels · `--muted` labels and meta · `--faint` placeholders, to-do steps, hollow dots, waveforms ·
@@ -38,9 +38,9 @@ calm, built for scanning many ads fast.
 - Pages pad by `--page-pad` (20px). Every brand page has a rail on the left as wide as the top bar is tall
   (`--bar-h`: the brand picker, then the pages as icons, no text) and one bar on top, both on `--bg-subtle` for the page's own controls: its count on the left, search centered, filters and actions
   on the right, each filter and the sort a dropdown led by a muted icon, the sort last; Board, Media and the Workflow
-  list share this order (filters "Any …", sort Newest / Oldest). An ad's page puts back, ID and name, and the step tabs (names only) in that bar; its editor keeps the timeline
-  fixed at the bottom, with the preview and notes filling the space above (preview and notes on `--bg-subtle`,
-  the timeline on `--fill`).
+  list share this order (filters "Any …", sort Newest / Oldest). An ad's page puts back, ID and name, and the step tabs (names only) in that bar; its editor keeps the timeline (drag its top edge down to hide the tracks, simplified mode, or up to show them; a double click toggles)
+  fixed at the bottom, with the preview and comments filling the space above (the comments under a bar like the top bar:
+  the V1 · V2 switch, the guides and Export), all on `--bg`.
 - The Board and the media library are masonry grids: 4 columns from 1200px, 3 from 900, 2 from
   640, else 1; each item keeps its own shape. The Workflow list caps at 64rem, centered; prose caps
   at 46rem.
@@ -52,7 +52,7 @@ calm, built for scanning many ads fast.
 
 Mostly flat. Buttons and cards are drawn with `--shadow-border` (a hairline plus a trace of
 shadow), which darkens on hover (`--shadow-border-hover`). Things floating over content — the
-hover preview, the note composer, the toast, play buttons — use `--shadow-float`.
+hover preview, the comment composer, the toast, play buttons — use `--shadow-float`.
 A masked shape (the open step) uses `--shadow-shape`, a drop-shadow filter.
 Media gets an inset hairline (`--media-outline`) so white images keep their edge. Never a border
 and a shadow on the same element.
@@ -84,12 +84,22 @@ and nav buttons. A dashed border means empty or a draft.
   (estimated, or the voice take's own length once there is one), each after a muted icon; the hook in that sentence is
   a bold word that opens a list; one mini button on its
   right is the voice: Generate voice, then play / pause with the time ("0:12 / 2:09"), Regenerate voice once the script
-  changes; no player controls. Selected text gets a floating Comment button; notes on the text list
+  changes; no player controls. Selected text gets a floating Comment button; comments on the text list
   beside it past a full-height hairline, like the editor's, their quotes marked with `--fill-strong` and an underline.
 - **Footage step** `.ft-*`: a `--fill` verdict box, then one row per scene: its clip (sticky, a dashed empty frame
   when missing) beside the scene name, a status dot once called, a ticked count, and its checks as shadow-bordered
   cards, then Approve / Reshoot mini buttons. A card is a check box beside what was asked, over its thread.
   Result icons (passed, the edit fixes it, reshoot) are `--muted`, never status colors.
+- **Comments** `.ed__comments` (the editor's and a brief's): the count on the left, then Approve all and a plain
+  archive icon (no background) that shows the approved ones, then one bordered card per comment (no fill): what it's
+  on (its number and time, or the quote), its stage as a dot and word (Waiting, Working on it, Ready to review), and
+  its rounds as a thread. Only a comment ready to review gets buttons, as mini buttons on the right: Approve (primary), Watch
+  change, Send back (asks what's still off); Edit (while waiting) and Delete show on hover. Hovered or pointed at from
+  the timeline, a card lifts; picked, it gets a dark ring. The editor ends the list with an always-there Add a comment
+  field (N focuses it), its round primary send arrow inside on the right, dimmed while empty. Dragging above the
+  timeline's ruler picks a stretch for it: a faint `--fg` band with hairline edges over every track, its edges snapping
+  to block edges (with Shift, as the playhead does, always to the nearest); a comment on a stretch shows a 3px bar
+  under its number.
 - **Check box** `.check`: 18px, white with a shadow border, `--radius-sm`; ticked, a `--fg` fill with a white tick.
 - **Thread** `.ft-thread`: chat messages, `--radius` with the tail corner `--radius-sm`: the AI and the agent on the
   left on `--bg-subtle`, the user on the right on `--fill-strong`; a `--faint` Comment link beside the latest.

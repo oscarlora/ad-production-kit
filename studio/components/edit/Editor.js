@@ -1,16 +1,18 @@
 'use client';
-// An ad's edit: the live preview (Studio's engine, the same one the export runs), its timeline, and review notes
+// An ad's edit: the live preview (Studio's engine, the same one the export runs), its timeline, and review comments
 // pinned to a moment and a spot on the frame. The agent edits the document; the preview follows the file.
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { editApi, fileUrl, openFile } from '../../lib/client/api.js';
+import { editApi, fileUrl, mediaUrl, openFile } from '../../lib/client/api.js';
 import { clock } from '../../lib/client/format.js';
 import { isTyping, useUndo } from '../../lib/client/hooks.js';
 import { compose } from '../../engine/doc.js';
-import { IcPause, IcPlay } from '../icons.js';
-import { Compose, Notes } from '../workflow/parts.js';
+import { IcPause, IcPlay, IcUp } from '../icons.js';
+import { Compose, Comments, commentNumbers } from '../workflow/parts.js';
 import { SafeZones, useZones, ZoneButton } from '../Player.js';
 import Timeline from './Timeline.js';
 import Trim from './Trim.js';
+
+const SIMPLE_KEY = 'ad-production-kit-studio:timeline-simple';
 
 // A doc path (relative to the ad folder, may climb with ../) as a brand-relative path; climbing past the
 // brand keeps its ../ (the shared library).
@@ -31,9 +33,13 @@ export default function Editor({ ws, brand, ad, edit }) {
   const [error, setError] = useState('');
   const [t, setT] = useState(0);
   const [playing, setPlaying] = useState(false);
-  const [draft, setDraft] = useState(null); // a note being written: { t, from (drag start), box, text }
-  const [focus, setFocus] = useState(null); // note id
-  const [off, setOff] = useState(() => new Set()); // track names turned off in the preview (never written to the doc)
+  const [draft, setDraft] = useState(null); // a comment being written: { t, from (drag start), box, text }
+  const [focus, setFocus] = useState(null); // comment id
+  const [lit, setLit] = useState(null); // the comment id under the pointer, in the list or on the timeline
+  const [add, setAdd] = useState(''); // the add-a-comment field's text
+  const [range, setRange] = useState(null); // a stretch picked on the timeline for the next comment: [from, to]
+  const addRef = useRef(null);
+  const [off, setOff] = useState(() => new Set()); // track names hidden in the preview (never written to the doc)
   const [trimId, setTrimId] = useState(null); // the clip open in the trim panel
   const api = editApi(ws, brand, ad);
   // ⌘Z / ⌘⇧Z undo and redo trims: each puts its document back as it was, unless it changed since.
@@ -46,12 +52,75 @@ export default function Editor({ ws, brand, ad, edit }) {
     ro.observe(el);
     return () => ro.disconnect();
   }, [!!doc]); // eslint-disable-line react-hooks/exhaustive-deps -- tlRef exists once the doc has loaded
+  // Dragging the timeline's top edge resizes it between its top row and all its tracks; let go, it snaps to the
+  // nearer one; a double click snaps to the other. Snapped down is simplified mode (no tracks), remembered in this browser.
+  const [simple, setSimple] = useState(() => { try { return localStorage.getItem(SIMPLE_KEY) === '1'; } catch { return false; } });
+  const [tlDrag, setTlDrag] = useState(null); // { h, snap? }: the timeline's height while its edge is dragged or snapping
+  const edge = useRef(null);
+  const sizes = () => { // its top row's and all its tracks' heights (the tracks once tlDrag renders them)
+    const el = tlRef.current, border = el.offsetHeight - el.clientHeight;
+    return { min: el.querySelector('.tl-track--head').offsetHeight + border, max: el.querySelector('.tl').offsetHeight + border };
+  };
+  const snap = (down) => {
+    const { min, max } = sizes();
+    setTlDrag({ h: down ? min : max, snap: true });
+    setTimeout(() => {
+      setTlDrag(null);
+      setSimple(down);
+      try { localStorage.setItem(SIMPLE_KEY, down ? '1' : '0'); } catch {}
+    }, 180);
+  };
+  const edgeDown = (e) => {
+    if (e.button !== 0) return;
+    e.currentTarget.setPointerCapture(e.pointerId);
+    edge.current = { y: e.clientY, h: tlRef.current.offsetHeight, moved: false };
+  };
+  const edgeMove = (e) => {
+    const d = edge.current;
+    if (!d || Math.abs(e.clientY - d.y) < 3 && !d.moved) return;
+    d.moved = true;
+    if (!tlDrag) { setTlDrag({ h: d.h }); return; } // renders the tracks first, so they can be measured
+    const { min, max } = sizes();
+    setTlDrag({ h: Math.max(min, Math.min(max, d.h - (e.clientY - d.y))) });
+  };
+  const edgeUp = () => {
+    const d = edge.current;
+    edge.current = null;
+    if (!d?.moved || !tlDrag) return setTlDrag(null);
+    const { min, max } = sizes();
+    snap(tlDrag.h < (min + max) / 2);
+  };
+  const edgeToggle = () => {
+    setTlDrag({ h: tlRef.current.offsetHeight });
+    requestAnimationFrame(() => snap(!simple));
+  };
   const toggleTrack = useCallback((name) => setOff((s) => { const n = new Set(s); n.has(name) ? n.delete(name) : n.add(name); return n; }), []);
   const live = useRef({ t: 0, busy: false, pending: null, stop: null, until: null, starting: false, actx: null, c0: 0, t0: 0, raf: 0 });
 
   const versions = useRef({}); // src -> mtime, so a replaced file gets a new URL
   versions.current = plan.media || {};
   const url = useCallback((src) => fileUrl(ws, brand, brandPath(ad, src), versions.current[src]), [ws, brand, ad]);
+  // src -> what the media library saved for that file (its frames and waveform), or null when it isn't a library file;
+  // the timeline draws a clip's frames and waveform once its src is here.
+  const [lib, setLib] = useState({});
+  const asked = useRef(new Set());
+  const libKey = [...new Set((doc?.tracks || []).flatMap((tr) => tr.clips).map((c) => c.src).filter((s) => s && !asked.current.has(s)))].join('\n');
+  useEffect(() => {
+    if (!libKey) return;
+    for (const src of libKey.split('\n')) {
+      asked.current.add(src);
+      const id = /^inputs\/media\/(\d+)_[^/]+$/.exec(brandPath(ad, src))?.[1];
+      (id ? fetch(mediaUrl(ws, brand, `_catalog/json/${id}.json`)).then((r) => (r.ok ? r.json() : null)).catch(() => null) : Promise.resolve(null)).then((rec) => {
+        const dur = rec?.file?.duration;
+        const saved = rec && {
+          dur,
+          sprites: rec.sprites && { ...rec.sprites, url: mediaUrl(ws, brand, rec.sprites.sheet), dur },
+          peaks: rec.file?.type === 'audio' ? mediaUrl(ws, brand, `_catalog/peaks/${id}.json`) : null,
+        };
+        setLib((m) => ({ ...m, [src]: saved }));
+      });
+    }
+  }, [libKey, ws, brand, ad]);
 
   // The canvas draws at the size it shows on screen (device pixels), up to the doc's own size.
   const stageRef = useRef(null);
@@ -103,7 +172,7 @@ export default function Editor({ ws, brand, ad, edit }) {
     draw(x);
   }, [draw, pause]);
 
-  // Plays from the playhead; with `until`, stops there (a note's review).
+  // Plays from the playhead; with `until`, stops there (a comment's review).
   const play = useCallback(async (until = null) => {
     const L = live.current, eng = engineRef.current;
     if (!eng?.doc || L.stop || L.starting) return;
@@ -157,7 +226,7 @@ export default function Editor({ ws, brand, ad, edit }) {
       const wasPlaying = !!live.current.stop;
       if (wasPlaying) pause();
       fitCanvas(raw.size || [1080, 1920]);
-      const shown = { ...raw, tracks: (raw.tracks || []).map((tr) => (off.has(tr.name) ? { ...tr, hidden: true, mute: true } : tr)) };
+      const shown = { ...raw, tracks: (raw.tracks || []).map((tr) => (off.has(tr.name) ? { ...tr, hidden: true } : tr)) };
       const d = await engine.load(shown, raw.fx ? `${url(raw.fx)}&v=${Date.now()}` : null); // fx.js re-imported fresh
       if (dead) return;
       setDoc(d);
@@ -168,10 +237,20 @@ export default function Editor({ ws, brand, ad, edit }) {
     return () => { dead = true; };
   }, [engine, ws, brand, plan.p, plan.v, plan.file, off, url, draw, pause, play, fitCanvas]);
 
-  // Space plays, arrows step a frame (with Shift, a second).
+  // Space plays, arrows step a frame (with Shift, a second); N writes a comment, ↑ / ↓ move between comments, A approves
+  // the picked one and W watches its change.
   useEffect(() => {
     const onKey = (e) => {
-      if (isTyping(e) || !doc) return;
+      if (isTyping(e) || !doc || e.metaKey || e.ctrlKey || e.altKey) return;
+      const k = e.key.toLowerCase(), n = pending.find((x) => x.id === focus);
+      if (k === 'n') { e.preventDefault(); pause(); addRef.current?.focus(); }
+      if ((e.key === 'ArrowUp' || e.key === 'ArrowDown') && pending.length) {
+        e.preventDefault();
+        const byTime = [...pending].sort((a, b) => a.t - b.t), i = byTime.indexOf(n);
+        pick(byTime[i < 0 ? 0 : Math.max(0, Math.min(byTime.length - 1, i + (e.key === 'ArrowUp' ? -1 : 1)))]);
+      }
+      if (n?.status === 'done' && k === 'a') commentAction({ approve: n.id });
+      if (n?.status === 'done' && k === 'w') review(n);
       if (e.key === ' ' && !e.target.closest?.('button')) { e.preventDefault(); live.current.stop ? pause() : play(); } // a focused button takes Space
       if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
         e.preventDefault();
@@ -180,9 +259,9 @@ export default function Editor({ ws, brand, ad, edit }) {
     };
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);
-  }, [doc, play, pause, seek]);
+  }); // re-bound each render: it reads the current comments and focus
 
-  // Drag on the frame to mark a spot (a click marks the moment), then write the note.
+  // Drag on the frame to mark a spot (a click marks the moment), then write the comment.
   const at = (e) => {
     const r = stageRef.current.getBoundingClientRect();
     return [Math.min(1, Math.max(0, (e.clientX - r.left) / r.width)), Math.min(1, Math.max(0, (e.clientY - r.top) / r.height))];
@@ -203,7 +282,7 @@ export default function Editor({ ws, brand, ad, edit }) {
   // The click itself takes focus off the new field.
   const onPointerUp = () => requestAnimationFrame(() => composeRef.current?.focus());
 
-  // Esc or a click anywhere else discards the note being written.
+  // Esc or a click anywhere else discards the comment being written.
   const composeRef = useRef(null);
   const drafting = !!draft;
   useEffect(() => {
@@ -217,11 +296,11 @@ export default function Editor({ ws, brand, ad, edit }) {
 
   const saveDraft = (text) => {
     const box = draft.box[2] > 0.01 || draft.box[3] > 0.01 ? draft.box : null;
-    api({ note: { t: draft.t, box, text, plan: plan.file } }).catch((e) => setError(e.message));
+    api({ comment: { t: draft.t, box, text, plan: plan.file } }).catch((e) => setError(e.message));
   };
-  const noteAction = (body) => api(body).catch((e) => setError(e.message));
+  const commentAction = (body) => api(body).catch((e) => setError(e.message));
   const pick = (n) => { setFocus(n.id); seek(n.t); };
-  // Plays what changed for a note: its changed stretch (or its moment), with a second either side.
+  // Plays what changed for a comment: its changed stretch (or its moment), with a second either side.
   const review = (n) => {
     const [a, b] = n.span || [n.t, n.t + 1];
     setFocus(n.id);
@@ -229,20 +308,29 @@ export default function Editor({ ws, brand, ad, edit }) {
     play(b + 1);
   };
 
-  const notes = useMemo(() => edit.notes.filter((n) => (n.plan || 'edit.json') === plan.file), [edit.notes, plan.file]);
-  const pending = useMemo(() => notes.filter((n) => n.status !== 'approved'), [notes]);
-  const shown = notes.filter((n) => n.box && (n.id === focus || (!playing && n.status !== 'done' && n.status !== 'approved' && Math.abs(n.t - t) < 0.2)));
+  const comments = useMemo(() => edit.comments.filter((n) => (n.plan || 'edit.json') === plan.file), [edit.comments, plan.file]);
+  const pending = useMemo(() => comments.filter((n) => n.status !== 'approved'), [comments]);
+  const nums = useMemo(() => commentNumbers(comments), [comments]);
+  const shown = comments.filter((n) => n.box && (n.id === focus || n.id === lit || (!playing && n.status !== 'done' && n.status !== 'approved' && Math.abs(n.t - t) < 0.2)));
   const exp = edit.export?.plan === plan.file ? edit.export : null;
   const W = doc?.W || 1080, H = doc?.H || 1920;
   const [zone, nextZone] = useZones(W / H);
   const trimClip = trimId && doc?.tracks.flatMap((tr) => tr.clips).find((c) => c.id === trimId);
   const applyTrim = (cut) => api({ trim: { plan: plan.file, id: trimId, ...cut } })
     .then((r) => { if (r.undo) recordUndo(r.undo); setTrimId(null); }).catch((e) => setError(e.message));
+  const sendAdd = () => {
+    if (add.trim()) api({ comment: { t: range ? range[0] : live.current.t, ...(range && { to: range[1] }), box: null, text: add.trim(), plan: plan.file } }).catch((er) => setError(er.message));
+    setAdd('');
+    setRange(null);
+  };
+  const pickRange = useCallback((r, done) => { setRange(r); if (done) addRef.current?.focus(); }, []);
+  const muteTrack = useCallback((track, mute) => editApi(ws, brand, ad)({ mute: { plan: plan.file, track, mute } })
+    .then((r) => recordUndo(r.undo)).catch((e) => setError(e.message)), [ws, brand, ad, plan.file, recordUndo]);
 
   return (
     <div className="ed" ref={rootRef}>
       <div className="ed__main">
-        <div className="ed__stage" ref={stageRef} style={{ aspectRatio: `${W} / ${H}` }} onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp} role="img" aria-label="Preview: click or drag to leave a note">
+        <div className="ed__stage" ref={stageRef} style={{ aspectRatio: `${W} / ${H}` }} onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp} role="img" aria-label="Preview: click or drag to leave a comment">
           <canvas ref={canvasRef} />
           {zone && <div className="ed__zones"><SafeZones mode={zone} ratio={W / H} /></div>}
           {shown.map((n) => (
@@ -252,7 +340,7 @@ export default function Editor({ ws, brand, ad, edit }) {
             <>
               {(draft.box[2] > 0.01 || draft.box[3] > 0.01) && <div className="ed__box ed__box--draft" style={boxStyle(draft.box)} />}
               <Compose
-                ref={composeRef} style={composeStyle(draft.box)} onPointerDown={(e) => e.stopPropagation()} placeholder={`Note at ${clock(draft.t, true)}`}
+                ref={composeRef} style={composeStyle(draft.box)} onPointerDown={(e) => e.stopPropagation()} placeholder={`Comment at ${clock(draft.t, true)}`}
                 value={draft.text} onChange={(text) => setDraft({ ...draft, text })} onSend={saveDraft} onClose={() => setDraft(null)}
               />
             </>
@@ -274,11 +362,26 @@ export default function Editor({ ws, brand, ad, edit }) {
           <Export ws={ws} brand={brand} ad={ad} plan={plan} exp={exp} api={api} onError={setError} />
         </div>
         {error && <p className="ed__error">{error}</p>}
-        <Notes notes={notes} focus={focus} onPick={pick} onReview={review} onAction={noteAction} lead={(n) => <span className="ed-note__time">{clock(n.t, true)}</span>} hint="Click or drag on the video to leave a note." />
+        <Comments
+          comments={comments} focus={focus} lit={lit} onLit={setLit} onPick={pick} onReview={review} onAction={commentAction} lead={(n) => <span className="ed-comment__time"><b className="ed-comment__num">{nums.get(n.id)}</b>{clock(n.t, true)}{n.to > n.t && `–${clock(n.to, true)}`}</span>}
+          footer={(
+            <div className="ed__add-row">
+              <textarea
+                ref={addRef} className="field ed__add" rows={1} value={add} placeholder={range ? `Add a comment on ${clock(range[0], true)}–${clock(range[1], true)}` : `Add a comment at ${clock(t, true)}`} onChange={(e) => setAdd(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Escape') { e.currentTarget.blur(); setRange(null); }
+                  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendAdd(); }
+                }}
+              />
+              <button type="button" className="btn btn--primary ed__send" aria-label="Send comment" title="Send (Enter)" disabled={!add.trim()} onClick={sendAdd}><IcUp /></button>
+            </div>
+          )}
+        />
       </aside>
       {doc && (
-        <div className="ed__tl" ref={tlRef}>
-        <Timeline doc={doc} t={t} notes={pending} onSeek={seek} onPick={pick} off={off} onToggle={toggleTrack} onClip={(id) => { pause(); setTrimId(id); }}>
+        <div className="ed__tl" ref={tlRef} data-drag={tlDrag ? (tlDrag.snap ? 'snap' : 'drag') : undefined} style={tlDrag ? { height: tlDrag.h } : undefined}>
+        <div className="ed__edge" role="separator" aria-orientation="horizontal" aria-label="Drag or double-click to show or hide the tracks" onPointerDown={edgeDown} onPointerMove={edgeMove} onPointerUp={edgeUp} onPointerCancel={edgeUp} onDoubleClick={edgeToggle} />
+        <Timeline doc={doc} t={t} comments={pending} nums={nums} url={url} lib={lib} lit={lit} range={range} onRange={pickRange} onHover={setLit} onSeek={seek} onPick={pick} off={off} onToggle={toggleTrack} onMute={muteTrack} onClip={(id) => { pause(); setTrimId(id); }} simple={simple && !tlDrag}>
           <button type="button" className="ed__play" onClick={() => (playing ? pause() : play())} aria-label={playing ? 'Pause' : 'Play'}>
             {playing ? <IcPause /> : <IcPlay />}
           </button>
@@ -286,14 +389,14 @@ export default function Editor({ ws, brand, ad, edit }) {
         </Timeline>
         </div>
       )}
-      {trimClip && <Trim key={trimClip.id} clip={trimClip} src={url(trimClip.src)} onApply={applyTrim} onClose={() => setTrimId(null)} />}
+      {trimClip && <Trim key={trimClip.id} clip={trimClip} src={url(trimClip.src)} saved={lib[trimClip.src]} onApply={applyTrim} onClose={() => setTrimId(null)} />}
     </div>
   );
 }
 
 const pct = (x) => `${x * 100}%`;
 const boxStyle = ([x, y, w, h]) => ({ left: pct(x), top: pct(y), width: pct(w), height: pct(h) });
-// The note field sits under the marked spot, or above it near the bottom.
+// The comment field sits under the marked spot, or above it near the bottom.
 const composeStyle = ([x, y, w, h]) => (y + h > 0.75 ? { left: pct(Math.min(x, 0.45)), bottom: pct(1 - y + 0.01) } : { left: pct(Math.min(x, 0.45)), top: pct(y + h + 0.01) });
 
 function Export({ ws, brand, ad, plan, exp, api, onError }) {

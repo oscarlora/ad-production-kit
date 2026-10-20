@@ -4,6 +4,6 @@ ADPK turns your AI agent into an ad team for Meta ads, image and video. An ad ge
   1. Research: the agent reads your brand's website and reviews to learn what you sell, who buys it, and why.
   2. Ideas: it asks a few short questions and offers 3 ad ideas. You pick one.
   3. Make: it makes the ad in the Studio, an app that opens in your browser, where you watch each step
-     land and leave notes.
+     land and leave comments.
 
 To start, say: "Make an image ad for <your brand's website>".

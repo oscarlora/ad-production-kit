@@ -19,10 +19,10 @@ A reshot take replaces the old one: delete the old file.
 ## 2. Check against the script
 
 Per clip, all clips at once: `node tools/transcribe-media.mjs --in "<clip>" --words` (writes
-`<clip>.transcript.json` beside it), a sheet of its start, middle and end frames (ffmpeg) with the 4:5
+`<clip>.transcript.json` beside it, and names the words Whisper and Gemini heard differently: check them on the line), a sheet of its start, middle and end frames (ffmpeg) with the 4:5
 crop and the Reels UI zone drawn (zones in **edit-video**, Text), and its levels (`ffmpeg -af
 volumedetect`). Then read the brief (`outputs/<ad>/<ID>_V1_….md`): every hook, body line, CTA and
-B-roll needs a clip. Run every clip through the checklist, the same one Studio shows:
+B-roll needs a clip, except scenes marked “(Optional)”. Run every clip through the checklist, the same one Studio shows:
 
 1. **line** — says the scripted line, or the same message in the creator's words. Fails on a changed
    meaning, a missing or added claim, a line cut off at the start, or one said twice across clips.
@@ -61,7 +61,7 @@ folder. A note is the check's short verdict, naming every difference, not repeat
 In chat: good to approve, or which scenes need a reshoot.
 
 The user comments on each check (a comment's `quote` is the scene, `check` the point), ticks or
-unticks it, Approves a scene (ticks all) or calls a Reshoot (a scene note reading `Approved` or
+unticks it, Approves a scene (ticks all) or calls a Reshoot (a scene comment reading `Approved` or
 `Reshoot: <what to change>`), all through **edit-video**'s review loop. Act on each comment (e.g. keep
 a line in the edit), set that check's tick in `ticks` when the comment settles it ("this is ok" →
 `true`), and reply; leave the check's note as it is. List the reshoots for the creator, with any file to rename.

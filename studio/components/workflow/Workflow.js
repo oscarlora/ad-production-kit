@@ -29,7 +29,7 @@ function Lightbox({ ws, brand, images, index, onStep, onClose }) {
 }
 
 // A step's files, rendered by kind; .md files edit in place (view and script: see MdEditor).
-function Files({ ws, brand, ad, files, view, script, notes }) {
+function Files({ ws, brand, ad, files, view, script, comments }) {
   const [zoom, setZoom] = useState(-1);
   const images = files.filter((f) => f.type === 'image');
   const videos = files.filter((f) => f.type === 'video');
@@ -42,7 +42,7 @@ function Files({ ws, brand, ad, files, view, script, notes }) {
       {mds.map((f) => (
         <section key={f.p}>
           {mds.length > 1 && <div className="eyebrow">{baseName(f.name)}</div>}
-          <MdEditor ws={ws} brand={brand} ad={ad} file={f} view={view} script={script} notes={notes.filter((n) => n.file === f.name)} />
+          <MdEditor ws={ws} brand={brand} ad={ad} file={f} view={view} script={script} comments={comments.filter((n) => n.file === f.name)} />
         </section>
       ))}
       {(images.length > 0 || videos.length > 0) && (
@@ -102,9 +102,9 @@ function Panel({ ws, brand, step, data }) {
           <div className="v v--pre">{v}</div>
         </div>
       ))}
-      {pn.files && <Files ws={ws} brand={brand} ad={data.folder} files={pn.files} view={pn.view} script={step.key === 'script'} notes={data.comments || []} />}
+      {pn.files && <Files ws={ws} brand={brand} ad={data.folder} files={pn.files} view={pn.view} script={step.key === 'script'} comments={data.comments || []} />}
       {pn.storyboard && storyboard && <Storyboard ws={ws} brand={brand} sb={storyboard} />}
-      {pn.footage && footage && <Footage ws={ws} brand={brand} ad={data.folder} footage={footage} notes={data.comments || []} />}
+      {pn.footage && footage && <Footage ws={ws} brand={brand} ad={data.folder} footage={footage} comments={data.comments || []} />}
     </section>
   );
 }

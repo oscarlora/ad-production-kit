@@ -194,8 +194,9 @@ function mapTimings(words, timed) {
   const n = a.length, m = b.length, W = m + 1, L = new Int32Array((n + 1) * W);
   for (let i = n - 1; i >= 0; i--) for (let j = m - 1; j >= 0; j--) L[i * W + j] = a[i] && a[i] === b[j] ? L[(i + 1) * W + j + 1] + 1 : Math.max(L[(i + 1) * W + j], L[i * W + j + 1]);
   const out = new Array(n).fill(null);
+  out.pairs = []; // [i, j] of each word both agree on
   for (let i = 0, j = 0; i < n && j < m;) {
-    if (a[i] && a[i] === b[j]) { out[i] = { start: timed[j].start, end: timed[j].end }; i++; j++; }
+    if (a[i] && a[i] === b[j]) { out[i] = { start: timed[j].start, end: timed[j].end }; out.pairs.push([i, j]); i++; j++; }
     else if (L[(i + 1) * W + j] >= L[i * W + j + 1]) i++; else j++;
   }
   const t0 = timed[0]?.start ?? 0, t1 = timed[m - 1]?.end ?? t0;
@@ -205,6 +206,21 @@ function mapTimings(words, timed) {
     const from = i ? out[i - 1].end : t0, to = k < n ? out[k].start : t1, step = Math.max(0, to - from) / (k - i);
     for (let x = i; x < k; x++) out[x] = { start: from + step * (x - i), end: from + step * (x - i + 1) };
     i = k;
+  }
+  return out;
+}
+
+// Words the two hear differently: runs of the same length between words they agree on, paired one to one
+// (numbers left out: "14" and "fourteen" are the same word). → [{ at, whisper, gemini }]
+function disagreements(words, heard, pairs) {
+  const out = [], ends = [[-1, -1], ...pairs, [words.length, heard.length]];
+  for (let p = 1; p < ends.length; p++) {
+    const [i0, j0] = ends[p - 1], [i1, j1] = ends[p];
+    if (i1 - i0 !== j1 - j0 || i1 - i0 > 4) continue;
+    for (let k = 1; k < i1 - i0; k++) {
+      const g = words[i0 + k], h = heard[j0 + k];
+      if (norm(g) !== norm(h.word) && !/\d/.test(g + h.word)) out.push({ at: Math.round(h.start * 100) / 100, whisper: h.word, gemini: g });
+    }
   }
   return out;
 }
@@ -262,6 +278,15 @@ async function whisperWords(wav, language) {
   return tokenWords(JSON.parse(readFileSync(`${out}.json`, 'utf8')).transcription.flatMap((s) => s.tokens));
 }
 
+// The words local Whisper hears in a file, on its clock: [{ word, start, end }]. No transcript, no cloud call.
+export async function hear(file, language) {
+  const dir = mkdtempSync(join(tmpdir(), 'hear-')), wav = join(dir, 'h.wav');
+  try {
+    run('ffmpeg', ['-y', '-v', 'error', '-i', file, '-ac', '1', '-ar', '16000', '-c:a', 'pcm_s16le', wav]);
+    return await whisperWords(wav, language);
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+}
+
 // A piece without a leading space joins the word before it; punctuation joins it too, except opening
 // marks (¿ ¡ « “ ( [), which go on the next word.
 const OPENING = '¿¡«“‘([';
@@ -313,6 +338,7 @@ export async function alignWords({ file, transcript }) {
   // Whisper's words are the final text: Gemini's sentences only lend each word its sentence and speaker,
   // by where Gemini's own words land on Whisper's timeline.
   const at = mapTimings(words.map((w) => w.word), heard);
+  const disagree = disagreements(words.map((w) => w.word), heard, at.pairs);
   const span = transcript.segments.map((_, si) => {
     const t = at.filter((_, i) => words[i].si === si);
     return t.length ? [t[0].start, t[t.length - 1].end] : null;
@@ -332,5 +358,6 @@ export async function alignWords({ file, transcript }) {
   return {
     ...transcript, text: segments.map((s) => s.text).join(' '), segments,
     words: out.map(({ si, ...w }) => ({ ...w, speaker: transcript.segments[si].speaker ?? null })), words_model: WORDS_MODEL,
+    ...(disagree.length && { disagree }), // Whisper's word is kept; these are for a person to check
   };
 }

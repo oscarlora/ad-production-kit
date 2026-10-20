@@ -40,7 +40,8 @@ Every file here — skills, docs, code, comments — is as short and plain as it
   Visual).
 - **Clear:** the simplest words that carry the meaning; technical terms only where needed.
 - **Generative:** give 3 deliberately different options by default, as a plain numbered list in
-  chat. Ask questions in chat, never through a picker or interview UI.
+  chat, as the last thing in the reply. Ask questions in chat, never through a picker, question box
+  or interview UI.
 - **Visual:** generated media (images, video, audio) shows in Studio as it lands; never hold it back to self-check — the user
   judges and calls re-rolls (brief sub-agents the same way). In chat, say in one line what's ready
   and on which step; no embeds or links. Only when the user can't see Studio (e.g. on their phone),
@@ -65,38 +66,39 @@ workspace's R2 bucket when it has one (see Operating principles).
 
     skills/   # one folder per skill: skills/<name>/SKILL.md
     tools/    # scripts; each documents its usage (--help)
-    studio/   # the local web app: Board · Media · Workflow (node studio/dev.mjs)
+    studio/   # the local web app: Board · Media · Swipe · Workflow (node studio/dev.mjs)
     .env      # per-workspace keys (<WS>_…; see .env.example). Other than the kie key at setup, the user
               # pastes keys into the file, not chat. Read keys from disk only and never echo them.
 
 ## Skills
 
 To make an ad: settle the ad type (ask if it isn't given), give the ad its ID and folder
-(`<ID>_New_<Format>` until the concept is picked; naming: **write-prompt**) and its record, and open
-Studio on its Workflow page without asking (**open-studio**; the user watches each step land there,
-research included, and edits there). Then reply with the plan: the steps in order, what you'll ask them,
-and that they can watch it in Studio. Then follow its workflow:
+(`<ID>_New_<Format>` until the concept is picked; naming: **write-prompt**) and its record, title the
+session right then (`<brand initials> ad <ID> – <concept> (<format>)`, e.g. `AC ad 11 – Up to 40% off
+(static)`; `New` until the concept is picked, then retitle; a session that makes more than one ad keeps
+every ID, `AC ad 11 + 12 – …`), start its .md with a **CONCEPT** section, and open Studio on its
+Workflow page without asking (**open-studio**; the user watches each step land there and edits there).
+Then reply with the plan: the steps in order, what you'll ask them, and that they can watch it in Studio. Then follow its workflow:
 
 - **make-image-ad** — image ads
 - **make-ai-podcast** — podcast video ads
 - **make-ai-song** — song video ads
 - **make-ai-animation** — animated video ads, narrated or dialogue
 - **make-ai-slides** — slides video ads, a narrated explainer
+- **replicate-ad** — an ad modeled on a reference the user wants to swipe
 
 Scripts need no workflow: **write-copy**.
 
 Every workflow starts by loading the brand context from `inputs/`: `brand.md`, the product's
 `products/<product>.md`, `-personas.md` and `-angles.md`, `customers.md`, `DESIGN.md` and
 `memory.md`, plus `ads.md` and `competitors.md` when ideating concepts; if the research or DESIGN.md
-is missing or thin, run **research-brand** first. Once the ad has an ID, title the
-session `<brand initials> ad <ID> – <concept> (<format>)` (e.g. `AC ad 11 – Up to 40% off
-(static)`; a session that makes more than one ad keeps every ID, `AC ad 11 + 12 – …`). The session works
-only on those ads: when a request points at another (its Studio page, its folder, a tool saying another
+is missing or thin, run **research-brand** first. The session works
+only on its own ads: when a request points at another (its Studio page, its folder, a tool saying another
 session is editing it), name that ad and ask before touching it. Write the ad's record (`outputs/json/<ID>.json`, schema in `tools/record-ad.mjs`) as
 `in-progress`; set `pending-review` when its output lands for the user, and `approved` on their yes.
 Refresh the index (`node tools/record-ad.mjs --index <brand outputs/ dir>`) when a record's status changes.
 From the moment the ad's folder has a script, brief or edit until handoff, keep **edit-video**'s review
-loop (`comments --wait`) running in the background, restarted after each batch, so every note the user
+loop (`comments --wait`) running in the background, restarted after each batch, so every comment the user
 leaves in Studio reaches you.
 
 Steps (each owns its procedure and rules):
@@ -136,8 +138,10 @@ Steps (each owns its procedure and rules):
   brand's rules go in its `memory.md` (**save-brand-memory**). Commit hooks (`tools/check-public.mjs`)
   block local workspace and brand names and the terms in `_custom/private-terms.txt`, in files and
   commit messages.
+- **Use what the user supplies** (clips, images, references) as given; never set one aside as too graphic or
+  off-brand on your own judgment.
 - **Approved generations go into the media library** (**catalog-media**, `--generated`). Never unapproved takes, intermediates or trimmed copies: analysis costs money per file.
-- **Speed:** only when the user asks how to get changes faster, suggest leaving all their notes and
+- **Speed:** only when the user asks how to get changes faster, suggest leaving all their comments and
   asking for one batch, and, in Claude Code, fast mode (`/fast`).
 - **Sub-agents only for long work** — a large ingestion, a batch, a long video revision — never for
   routine steps. Heavy video revisions run one at a time, most progressed first. Parallel agents

@@ -6,7 +6,7 @@
 // relative to the ad folder). Drag the grips to reorder blocks, table rows and columns. Each change saves to disk
 // at once; changes on disk show live, and a block being typed in keeps the typing. Clicking a grip selects its
 // block, row or column and opens its actions (Delete / Backspace deletes it); several blocks select together (see chosen below). Selecting text (or a row's Comment
-// action) leaves a note on it for the agent, as on the video in the Edit step; so does each edit the user finishes,
+// action) leaves a comment on it for the agent, as on the video in the Edit step; so does each edit the user finishes,
 // so the agent brings what depends on it in step.
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { apiBase, editApi, fileUrl, mediaType, postJson } from '../../lib/client/api.js';
@@ -16,7 +16,7 @@ import { blockKind, inSections, mediaItems, parseDoc, serializeDoc, tableCells, 
 import { IcClock, IcGrip, IcPause, IcPlay, IcSound, IcText } from '../icons.js';
 import Player from '../Player.js';
 import Markdown, { Inline } from './Markdown.js';
-import { Compose, Notes, useFileText } from './parts.js';
+import { Compose, Comments, useFileText } from './parts.js';
 import RichText from './rich.js';
 
 const SAVE_MS = 300;
@@ -44,25 +44,25 @@ function findRanges(root, quote) {
   return out;
 }
 
-// Marks each pending note's quote in root (CSS Custom Highlight API; the focused note darker), again when doc changes.
-function useNoteMarks(root, notes, focus, doc) {
+// Marks each pending comment's quote in root (CSS Custom Highlight API; the focused comment darker), again when doc changes.
+function useCommentMarks(root, comments, focus, doc) {
   useEffect(() => {
     if (!root.current || !window.CSS?.highlights) return undefined;
     const marks = [], focused = [];
-    for (const n of notes) if (n.status !== 'approved' && n.quote) (n.id === focus ? focused : marks).push(...findRanges(root.current, n.quote));
-    CSS.highlights.set('mde-note', new Highlight(...marks));
-    CSS.highlights.set('mde-note-focus', new Highlight(...focused));
-    return () => { CSS.highlights.delete('mde-note'); CSS.highlights.delete('mde-note-focus'); };
-  }, [root, notes, focus, doc]);
+    for (const n of comments) if (n.status !== 'approved' && n.quote) (n.id === focus ? focused : marks).push(...findRanges(root.current, n.quote));
+    CSS.highlights.set('mde-comment', new Highlight(...marks));
+    CSS.highlights.set('mde-comment-focus', new Highlight(...focused));
+    return () => { CSS.highlights.delete('mde-comment'); CSS.highlights.delete('mde-comment-focus'); };
+  }, [root, comments, focus, doc]);
 }
 
-// The floating "Comment" button over a text selection, then the note field: { quote, x, y, writing?, text? }.
-function NoteField({ ask, setAsk, onSave }) {
+// The floating "Comment" button over a text selection, then the comment field: { quote, x, y, writing?, text? }.
+function CommentField({ ask, setAsk, onSave }) {
   const style = { left: Math.min(ask.x, window.innerWidth - 336), top: ask.y };
   if (!ask.writing) {
     return <button type="button" className="btn btn--mini mde__ask" style={style} onMouseDown={(e) => e.preventDefault()} onClick={() => setAsk({ ...ask, writing: true, text: '' })}>Comment</button>;
   }
-  return <Compose className="mde__compose" style={style} placeholder="Leave a note for the agent" value={ask.text} onChange={(text) => setAsk({ ...ask, text })} onSend={(text) => onSave(ask.quote, text)} onClose={() => setAsk(null)} />;
+  return <Compose className="mde__compose" style={style} placeholder="Leave a comment for the agent" value={ask.text} onChange={(text) => setAsk({ ...ask, text })} onSend={(text) => onSave(ask.quote, text)} onClose={() => setAsk(null)} />;
 }
 
 // Remote blocks take the ids of identical local ones, so unchanged blocks stay put.
@@ -258,7 +258,7 @@ function useGrips(menuFor, onPick) {
 
 // A table: grips live outside the grid, shown for the hovered row and column: each column's in the strip above
 // its header, each row's in the left gutter. Hovering a grip lights its row or column.
-function Table({ b, colRe, focus, setFocus, change, done, note, voice, url, grip, zone, isSel }) {
+function Table({ b, colRe, focus, setFocus, change, done, comment, voice, url, grip, zone, isSel }) {
   const [hover, setHover] = useState({ r: -1, c: -1, grip: false });
   const lines = b.src.split('\n');
   const rows = lines.map(tableCells);
@@ -307,29 +307,29 @@ function Table({ b, colRe, focus, setFocus, change, done, note, voice, url, grip
   const label = take?.busy ? 'Generating voice…' : stale || !take?.src ? (take?.src ? 'Regenerate voice' : 'Generate voice')
     : play.on || play.t ? `${clock(play.t)} / ${clock(play.dur)}` : 'Play voice';
   // Enter in a body cell: the text after the cursor moves into the same column of a new row below, which takes the
-  // cursor; a numbered row (Body 1) makes it the next one (Body 2) and renumbers, with a note to fix what cites them.
+  // cursor; a numbered row (Body 1) makes it the next one (Body 2) and renumbers, with a comment to fix what cites them.
   const splitRow = (r, c, before, after) => {
     const from = tableCells(b.src.split('\n')[r])[0].replace(/\*/g, '');
     after = after.trimStart();
     change(b.id, (src) => setCell(src, r, c, before.trimEnd()));
-    document.activeElement?.blur(); // finishes this cell (its note) before the new one opens
+    document.activeElement?.blur(); // finishes this cell (its comment) before the new one opens
     let made = '';
     change(b.id, (src) => {
       const l = src.split('\n');
       made = c > 0 ? insertRow(l, r, setCell(blankRow(l), 0, c, after)) : (l.splice(r + 1, 0, setCell(blankRow(l), 0, c, after)), '');
       return l.join('\n');
     }, true);
-    if (made) note(`You split ${from}: the new row is ${made}, and the later ones moved up one. Update what cites their numbers.`, made);
+    if (made) comment(`You split ${from}: the new row is ${made}, and the later ones moved up one. Update what cites their numbers.`, made);
     setFocus({ id: b.id, r: r + 1, c, start: true });
   };
   // Delete or Backspace in an empty cell of a row with nothing else in it (but its label) deletes the row; a numbered
-  // row's later ones move down one, with a note to fix what cites them. The cursor goes to the row above.
+  // row's later ones move down one, with a comment to fix what cites them. The cursor goes to the row above.
   const dropRow = (r, c) => {
     if (tableCells(b.src.split('\n')[r]).slice(1).some((x) => x.trim())) return;
     document.activeElement?.blur();
     let gone = '';
     change(b.id, (src) => { const l = src.split('\n'); gone = removeRow(l, r); return l.join('\n'); }, true);
-    if (gone) note(`You deleted ${gone}, and the later ones moved down one. Update what cites their numbers.`, gone);
+    if (gone) comment(`You deleted ${gone}, and the later ones moved down one. Update what cites their numbers.`, gone);
     if (r - 1 > 0 && !isRule(rows[r - 1])) setFocus({ id: b.id, r: r - 1, c });
   };
   // Backspace at the start of a cell, in a row with nothing else in it (but its label), moves its text onto the end of
@@ -341,7 +341,7 @@ function Table({ b, colRe, focus, setFocus, change, done, note, voice, url, grip
     document.activeElement?.blur();
     let gone = '';
     change(b.id, (src) => { const x = src.split('\n'); x[r - 1] = setCell(x[r - 1], 0, c, head ? `${head} ${text}` : text); gone = removeRow(x, r); return x.join('\n'); }, true);
-    if (gone) note(`You merged ${gone} into the row above, and the later ones moved down one. Update what cites their numbers.`, gone);
+    if (gone) comment(`You merged ${gone} into the row above, and the later ones moved down one. Update what cites their numbers.`, gone);
     setFocus({ id: b.id, r: r - 1, c, offset });
   };
   const show = (on) => on || undefined;
@@ -448,7 +448,7 @@ function TitledEdit({ b, focus, change, done }) {
 // file: { name (relative to the ad folder), p, v }. view (else the whole file), as regex sources: only, the section
 // names to show; pick, the blocks among them; cols, a table's columns by header. script: its tables with a Line column
 // end with their spoken length and voice.
-export default function MdEditor({ ws, brand, ad, file, view, script, notes = [] }) {
+export default function MdEditor({ ws, brand, ad, file, view, script, comments = [] }) {
   const only = view?.only && new RegExp(view.only, 'i'), pick = view?.pick && new RegExp(view.pick);
   const colRe = view?.cols && new RegExp(view.cols, 'i');
   const remote = useFileText(ws, brand, file.p, file.v);
@@ -641,11 +641,11 @@ export default function MdEditor({ ws, brand, ad, file, view, script, notes = []
     document.addEventListener('mouseup', onUp);
   };
 
-  // Notes: select text for the Comment button; the note field closes on Esc, a save, or a click elsewhere.
+  // Comments: select text for the Comment button; the comment field closes on Esc, a save, or a click elsewhere.
   const rootRef = useRef(null);
   const [ask, setAsk] = useState(null);
-  const [noteFocus, setNoteFocus] = useState(null);
-  useNoteMarks(rootRef, notes, noteFocus, doc);
+  const [commentFocus, setCommentFocus] = useState(null);
+  useCommentMarks(rootRef, comments, commentFocus, doc);
   useEffect(() => {
     const onUp = (e) => {
       if (e.target.closest?.('.mde__ask, .mde__compose')) return;
@@ -662,22 +662,22 @@ export default function MdEditor({ ws, brand, ad, file, view, script, notes = []
     window.addEventListener('scroll', onScroll, true);
     return () => { document.removeEventListener('mouseup', onUp); window.removeEventListener('scroll', onScroll, true); };
   }, []);
-  const noteApi = (body) => api(body).catch((e) => setError(String(e.message || e)));
-  const saveNote = (quote, text) => {
+  const commentApi = (body) => api(body).catch((e) => setError(String(e.message || e)));
+  const saveComment = (quote, text) => {
     window.getSelection()?.removeAllRanges();
-    noteApi({ note: { file: file.name, quote, text } });
+    commentApi({ comment: { file: file.name, quote, text } });
   };
-  const pickNote = (n) => {
-    setNoteFocus(n.id);
+  const pickComment = (n) => {
+    setCommentFocus(n.id);
     findRanges(rootRef.current, n.quote || '')[0]?.startContainer.parentElement.scrollIntoView({ block: 'center', behavior: 'smooth' });
   };
 
-  // Done with a block: save, re-split it if it now holds blank lines, and note the change for the agent.
+  // Done with a block: save, re-split it if it now holds blank lines, and comment the change for the agent.
   const done = () => {
     const from = editRef.current, to = spot(docRef.current?.blocks, focusRef.current);
     setFocus(null);
     if (from && to && from.text.trim() !== to.text.trim()) {
-      noteApi({ note: { file: file.name, quote: to.text.replace(/\*\*/g, ''), text: `You edited ${from.where}`, edit: { where: from.where, from: from.text, to: to.text } } });
+      commentApi({ comment: { file: file.name, quote: to.text.replace(/\*\*/g, ''), text: `You edited ${from.where}`, edit: { where: from.where, from: from.text, to: to.text } } });
     }
     if (!docRef.current) return;
     const parsed = parseDoc(serializeDoc(docRef.current));
@@ -736,7 +736,7 @@ export default function MdEditor({ ws, brand, ad, file, view, script, notes = []
             <div key={b.id} data-id={b.id} className="mde__block" {...zone('block', b.id, 'y', moveBlock)} data-sel={isSel('block', b.id) || chosen.includes(b.id) || undefined}>
               {kind !== 'table' && grip({ kind: 'block', from: b.id })}
               {kind === 'media' ? <Media items={mediaItems(b.src)} url={url} />
-                : kind === 'table' ? <Table b={b} colRe={colRe} focus={focus} setFocus={setFocus} change={change} done={done} note={(text, quote) => noteApi({ note: { file: file.name, quote, text } })} voice={script ? (lines, hook, check) => postJson(`${apiBase(ws, brand)}/voice`, { ad, lines, hook, check }).then((r) => r.p && fileUrl(ws, brand, r.p, r.v)) : null} url={url} grip={grip} zone={zone} isSel={isSel} />
+                : kind === 'table' ? <Table b={b} colRe={colRe} focus={focus} setFocus={setFocus} change={change} done={done} comment={(text, quote) => commentApi({ comment: { file: file.name, quote, text } })} voice={script ? (lines, hook, check) => postJson(`${apiBase(ws, brand)}/voice`, { ad, lines, hook, check }).then((r) => r.p && fileUrl(ws, brand, r.p, r.v)) : null} url={url} grip={grip} zone={zone} isSel={isSel} />
                 : focus?.id === b.id ? (
                   kind === 'comment' ? <Area value={b.src} same={(x, y) => x.trim() === y.trim()} onChange={(v) => change(b.id, () => v)} onDone={done} />
                     : pick && LABELED.test(b.src) ? <TitledEdit b={b} focus={focus} change={change} done={done} />
@@ -751,13 +751,13 @@ export default function MdEditor({ ws, brand, ad, file, view, script, notes = []
           );
         })}
       </div>
-      {notes.length > 0 && (
+      {comments.length > 0 && (
         <div className="mde-doc__side">
-          <Notes notes={notes} focus={noteFocus} onPick={pickNote} onAction={noteApi} hint="Select text to leave a note."
-            lead={(n) => n.quote && <span className="ed-note__quote">{n.quote}</span>} />
+          <Comments comments={comments} focus={commentFocus} onPick={pickComment} onAction={commentApi} hint="Select text to leave a comment."
+            lead={(n) => n.quote && <span className="ed-comment__quote">{n.quote}</span>} />
         </div>
       )}
-      {ask && <NoteField ask={ask} setAsk={setAsk} onSave={saveNote} />}
+      {ask && <CommentField ask={ask} setAsk={setAsk} onSave={saveComment} />}
     </div>
   );
 }

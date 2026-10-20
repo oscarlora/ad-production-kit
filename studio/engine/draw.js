@@ -85,9 +85,18 @@ function drawMedia(ctx, c, t, env, frame) {
       if (frame.draw) frame.draw(ctx, ...r); else ctx.drawImage(frame, ...r);
       return;
     }
-    const vf = frame.toVideoFrame ? frame.toVideoFrame() : frame;
-    try { ctx.drawImage(env.grader.apply(vf, sw, sh, g, Math.round(t * env.fps)), ...r); } finally { if (vf !== frame) vf.close(); }
+    // a phone clip's rotation lives in its metadata, which the grader ignores: draw it upright first
+    const vf = frame.rotation ? upright(frame, sw, sh) : frame.toVideoFrame ? frame.toVideoFrame() : frame;
+    try { ctx.drawImage(env.grader.apply(vf, sw, sh, g, Math.round(t * env.fps)), ...r); } finally { if (vf.close && vf !== frame) vf.close(); }
   });
+}
+
+let uprightCanvas;
+function upright(frame, w, h) {
+  uprightCanvas ??= new OffscreenCanvas(w, h);
+  if (uprightCanvas.width !== w || uprightCanvas.height !== h) { uprightCanvas.width = w; uprightCanvas.height = h; }
+  frame.draw(uprightCanvas.getContext('2d'), 0, 0, w, h);
+  return uprightCanvas;
 }
 
 // ---- text ----
@@ -162,6 +171,33 @@ function parseText(text, accent) {
   return out;
 }
 
+// Instagram's text background: a box per line, each as wide as its line, joined into one shape whose outer and
+// inner (where a shorter line meets a longer one) corners are both rounded. half: each line's half width.
+function lineBoxes(ctx, widths, y0, lh, padY, radius) {
+  // Neighbours too close in width to round the step between them share the wider width.
+  const half = [...widths];
+  for (let i = 1; i < half.length; i++) {
+    if (Math.abs(half[i] - half[i - 1]) >= 2 * radius) continue;
+    let j = i; while (j > 0 && Math.abs(half[j] - half[j - 1]) < 2 * radius) j--;
+    const w = Math.max(...half.slice(j, i + 1));
+    for (let k = j; k <= i; k++) half[k] = w;
+  }
+  const n = half.length, ys = half.map((_, i) => y0 + i * lh);
+  const top = y0 - padY, bottom = y0 + n * lh + padY;
+  const pts = [[-half[0], top], [half[0], top]];
+  for (let i = 1; i < n; i++) pts.push([half[i - 1], ys[i]], [half[i], ys[i]]);
+  pts.push([half[n - 1], bottom], [-half[n - 1], bottom]);
+  for (let i = n - 1; i > 0; i--) pts.push([-half[i], ys[i]], [-half[i - 1], ys[i]]);
+  const p = pts.filter((q, i) => { const r = pts[(i + 1) % pts.length]; return Math.hypot(q[0] - r[0], q[1] - r[1]) > 0.5; });
+  const len = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1]);
+  ctx.moveTo((p[0][0] + p[1][0]) / 2, (p[0][1] + p[1][1]) / 2);
+  for (let i = 1; i <= p.length; i++) {
+    const a = p[i - 1], b = p[i % p.length], c = p[(i + 1) % p.length];
+    ctx.arcTo(b[0], b[1], c[0], c[1], Math.min(radius, len(a, b) / 2, len(b, c) / 2));
+  }
+  ctx.closePath();
+}
+
 function drawTextBlock(ctx, tokens, st, px, color, bg) {
   ctx.font = fontOf(st);
   ctx.textAlign = 'left';
@@ -172,12 +208,11 @@ function drawTextBlock(ctx, tokens, st, px, color, bg) {
   const laid = rows(tokens, st.maxWidth || 960, space);
   const top = (-(laid.length - 1) * lh) / 2;
   if (bg) {
-    const w = Math.max(...laid.map((r) => r.width)), bx = bg.padX ?? 28, by = bg.padY ?? 16;
     ctx.save();
     ctx.globalAlpha *= bg.opacity ?? 1;
     ctx.fillStyle = bg.color || '#000000';
     ctx.beginPath();
-    ctx.roundRect(-w / 2 - bx, top - lh / 2 - by, w + 2 * bx, laid.length * lh + 2 * by, bg.radius ?? 12);
+    lineBoxes(ctx, laid.map((r) => r.width / 2 + (bg.padX ?? 28)), top - lh / 2, lh, bg.padY ?? 16, bg.radius ?? 12);
     ctx.fill();
     ctx.restore();
   }

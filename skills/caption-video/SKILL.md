@@ -39,14 +39,18 @@ Then fix by hand:
 
 ## 3. Style
 
-- **Default:** Inter Bold, white with a black outline, lower-center (center `y` about 1150 on 1920);
-  deviate only with a reason. Any Google font by name (`Archivo Black` for a heavier look).
+Two styles, lower-center (center `y` about 1150 on 1920); deviate only with a reason. Any Google font by
+name (`Archivo Black` for a heavier look).
+- **Outlined** (the default): Inter 700, white, black `stroke` with `strokeWidth` 5, a soft shadow.
+- **Boxed** (Instagram's own text style): Inter 700 at 50, `#111111` on
+  `background: { color: "#FFFFFF", padX: 28, padY: 16, radius: 18 }`; each line gets its own box, joined
+  with rounded inner corners. A key phrase gets a yellow (`#FFD60A`) box of its own laid over it.
 - **Karaoke / lyric:** `active` styles the word being said (`color`, `scale` 1.2–1.3), `upcoming`
   the words still to come (`opacity` 0.5; 0 reveals them word by word); `enter: "pop"` per line.
-- **Hook** (the opening on-screen line): a `text` clip in the caption style, no box and no entrance
-  animation, at most 2 lines (smaller text, or trimmed wording, before a third), `{braces}` around the
-  whole phrase that carries the message in the accent color ("{my belly just keeps growing}", not
-  just its tail; a list as one span, commas and "and" included), ideally its own line. It sits above the
+- **Hook** (the opening on-screen line): a `text` clip in the caption style, no entrance animation,
+  at most 2 lines (smaller text, or trimmed wording, before a third), `{braces}` around the whole phrase
+  that carries the message in the accent color ("{my belly just keeps growing}", not just its tail; a
+  list as one span, commas and "and" included), ideally its own line. It sits above the
   speaker's head when there's room inside the safe area (**edit-video**, Text), else just under the
   chin — always clear of the face, the product and the scene's key object in every shot it spans
   (check a frame from each) and stays put through zooms. Captions start only after the hook

@@ -1,6 +1,6 @@
 ---
 name: edit-video
-description: Assemble and revise a video ad in ADPK's own editor — an edit document (outputs/<ad>/edit.json) that Studio previews live and tools/edit-video.mjs exports to MP4 with the same engine. Use when cutting rendered clips into a finished video, adding the hook, captions, music, sound effects, transitions, zooms, color or an end card, applying the user's review notes from Studio, or exporting ("tighten the pacing", "fade between these", "grade them to match", "duck the music", "export it").
+description: Assemble and revise a video ad in ADPK's own editor — an edit document (outputs/<ad>/edit.json) that Studio previews live and tools/edit-video.mjs exports to MP4 with the same engine. Use when cutting rendered clips into a finished video, adding the hook, captions, music, sound effects, transitions, zooms, color or an end card, applying the user's review comments from Studio, or exporting ("tighten the pacing", "fade between these", "grade them to match", "duck the music", "export it").
 ---
 
 # Edit video
@@ -9,7 +9,7 @@ An ad's edit is one JSON document, `outputs/<ad>/edit.json`. A version that chan
 (`edit-v2.json`, `edit-v3.json`…) holds just its hook on top of `"base": "edit.json"`, so body changes
 happen once, in `edit.json`; one that differs more (a reframe, **recut-shorts**) is a full copy.
 Editing marks the ad as yours until you push (sync-brand). Studio's Workflow page shows it live in
-the ad's **Edit** step: preview, timeline, review notes and an Export button. Change the document
+the ad's **Edit** step: preview, timeline, review comments and an Export button. Change the document
 (or replace a media file it uses) and the preview follows within a second. Schema, flags and every subcommand: `node tools/edit-video.mjs --help`.
 
 ## Build
@@ -18,23 +18,25 @@ the ad's **Edit** step: preview, timeline, review notes and an Export button. Ch
    product graphics (**search-media**). The preview loads a file the moment the document names it: finish new media
    (write it under a temp name, then rename it) before pointing the document at it.
 2. **Write the document:** tracks top to bottom (hook and text, captions, video, voice, music, SFX),
-   every time on the timeline clock. Clips trim with `in`, play at `rate` and get `transition`s.
+   every time on the timeline clock. Clips trim with `in`, play at `rate` and get `transition`s. A speaker's
+   take goes in whole: `tighten` finds where its speech starts and ends (a transcript's word ends run early).
    Anything that changes over time (zoom, volume, saturation…) takes keyframes.
 3. **Captions:** `captions --words <transcript or song timing>` writes word-timed lines (**caption-video**).
-4. **Check:** `check`, and `frames --at …` when you need to see a moment.
+4. **Check:** `check` (it also flags a cut into speech, which listening misses), and `frames --at …` when you
+   need to see a moment.
 
 ## Revise: live review
 
-The user can also trim clips in Studio, which writes straight into the document: change an edit in place from
+The user can also trim clips and mute or unmute tracks in Studio, which writes straight into the document: change an edit in place from
 then on, never rebuild it from a script over their trims.
 
-The user leaves notes on the preview (a moment, optionally a box on the frame). Work through them as
+The user leaves comments on the preview (a moment, optionally a box on the frame, or a stretch: `t` to `to`). Work through them as
 they come:
 
 1. `node tools/edit-video.mjs comments outputs/<ad> --wait` as a tracked background command with no
-   time limit: it exits with the open notes the moment there is one, with a contact sheet of their
+   time limit: it exits with the open comments the moment there is one, with a contact sheet of their
    moments (the rest, and `--take`: `--help`).
-2. Look at the sheet: the box says which word, face or object the note means. Make each change on
+2. Look at the sheet: the box says which word, face or object the comment means. Make each change on
    what it's about: a clip's look on the clip (it then starts and ends with it), keyframes only for
    change over time, timed to cuts or word times, never by ear.
 3. When a change moves or retimes something (a cut, a keyframe, a position), check one `frames`
@@ -42,12 +44,13 @@ they come:
    change of wording, color or volume needs no sheet. A change to what's heard: `audio --from --to
    --transcribe` on the changed stretch, never an export.
 4. `comments outputs/<ad> --done <id> --reply "<what changed, in a few words>" --span <from>-<to>`
-   (the changed stretch, which Studio's watch button plays). The user watches it and approves it,
-   which moves it to the note history, or leaves a new note.
+   (the changed stretch, which Studio's Watch change button plays). The user watches it and approves
+   it, which archives it, or sends it back: it comes back open with what's still off, the earlier
+   rounds in its `history`.
 5. Start the wait again.
 
-Notes are one file each in `outputs/<ad>/comments/`, in the language the user writes in; reply in it.
-A note on a brief (.md) or `footage.json` has `file` and `quote` (the text it's about) instead of a
+Comments are one file each in `outputs/<ad>/comments/`, in the language the user writes in; reply in it.
+A comment on a brief (.md) or `footage.json` has `file` and `quote` (the text it's about) instead of a
 moment; its `--done` takes no `--span` (and on a brief, a `--reply` only when you changed something).
 One from the user's own edit in Studio carries `edit: { where, from, to }`: bring what depends on it
 in step.
@@ -100,10 +103,11 @@ change to V1's.
   takes exposure, contrast, saturation, temperature, grain, vignette, each keyframable.
 - **Sound** — you choose it: music (**add-music**) and effects (**generate-sfx**); reference a shared
   library file in place (`../../../../Shared/Library/inputs/media/<file>`). An effect earns its place by marking something (a
-  move, a reveal, a list item), never as decoration. Time each effect from its peak (**generate-sfx**, Place). `duck` dips a track under speech (`--speaker`
+  move, a reveal, a list item), never as decoration, and goes when what it marks goes or moves (`check` flags one left
+  marking nothing). Time each effect from its peak (**generate-sfx**, Place). `duck` dips a track under speech (`--speaker`
   for one voice in a transcript); `moves` lists where the picture moves, for effects on actions.
   A noisy or mumbled voice: **generate-voice** (`isolate`, `patch`).
-- **Text** — hook, lists and end card as `text` / `rect` / `image` clips. Everything sits where both
+- **Text** — hook, lists and end card as `text` / `rect` / `image` clips. Text overlays cut in, no entrance animation, unless the user asks. Everything sits where both
   feeds show it: inside the 4:5 crop (y 285–1635 on 1920) and above the Reels UI, which covers the
   bottom ~35% (so no text below y ~1250), with room to spare — about 90 px from every edge, text
   blocks at most ~880 px wide — and clear of the face and the product. Captions stay centered
@@ -126,8 +130,8 @@ change to V1's.
 ## Export
 
 The Studio preview is the live edit, so review and revisions never need an export. Export only when the user
-asks or approves the cut. Push to R2 only when the user says the editing is done, and after reopening it, only on their
-next "done". `node tools/edit-video.mjs export outputs/<ad>/edit.json` (or the user's Export button): H.264 + AAC at
+asks or approves the cut; an approval also means push to R2 right after the export (and again after each later
+approval). `node tools/edit-video.mjs export outputs/<ad>/edit.json` (or the user's Export button): H.264 + AAC at
 −14 LUFS into `final/<id>_V<n>_…mp4`, about 20 s for 80 s of 1080p; `--out` names it per the brand's
 brief template if it has one. `--scale 0.5` makes a quick draft,
 `--from`/`--to` a section. Never grade your own render; hand over the path.

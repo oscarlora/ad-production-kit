@@ -27,6 +27,8 @@ Built on what I ([@oscarlorak](https://x.com/oscarlorak)) learned making ads for
 - **Slides video ads:** a narrated explainer, one illustrated slide per line.
 - **UGC edits:** a creator's footage checked against the script, then cut into the ad.
 - **Short recuts:** sub-30 s versions recombined from a finished talking-head or UGC edit.
+- **Replicated ads:** share an ad you like and get the same structure for your product, made from
+  your own footage.
 
 ## How it works
 
@@ -37,16 +39,16 @@ Everything runs through your agent: say what you want in plain words.
    the brand, each product, its customers (personas) and why they buy (angles), the competitors, and
    the brand's look.
 2. **Concept:** *"Make an image ad for Acme"* — or a script, or a podcast, song, animated or
-   slides video ad. The agent offers 3 different concepts (persona, angle, hook); you
-   pick one.
+   slides video ad, or *"make one like this"* with an ad to replicate. The agent offers 3 different
+   concepts (persona, angle, hook); you pick one.
 3. **Write:** hooks, script and on-screen copy.
 4. **Make:** the design or storyboard, then images, voices, music and video clips. You see and
    approve each step before the next.
 5. **Edit:** clips, captions, music and effects are cut into the final video. You watch it in the
-   studio and click on the video to leave notes; the agent applies them while you watch, then exports.
+   studio and click on the video to leave comments; the agent applies them while you watch, then exports.
    A creator's footage is first checked against the script. A finished talking-head edit can be recut into shorter ads from the same footage.
 6. **Review and upload:** *"Open the studio"* — the local web app: **Board** (review ads),
-   **Media** (search the library), **Workflow** (each ad's progress, its brief to edit live, and its edit). Approved ads are uploaded to
+   **Media** (search the library), **Swipe** (ads to replicate), **Workflow** (each ad's progress, its brief to edit live, and its edit). Approved ads are uploaded to
    Google Drive, Notion, or anywhere you set up (e.g. Dropbox). Anything you or a client want
    remembered goes into the brand's memory, so the next ads follow it.
 

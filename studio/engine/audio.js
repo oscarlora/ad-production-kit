@@ -15,11 +15,13 @@ function automate(param, fn, a, b, when, keyedValue) {
   param.setValueCurveAtTime(curve, when, Math.max(STEP, b - a));
 }
 
-// Clips that sound, with their decoded buffers.
+// Clips that sound, with their decoded buffers; `incomplete` when a file failed to load (worth another try).
 export async function soundClips(doc, media, ctx) {
   const clips = doc.tracks.filter((tr) => !tr.mute).flatMap((tr) => tr.clips.filter(hasSound));
   const bufs = await Promise.all(clips.map((c) => media.sound(c.src, ctx, c.rate)));
-  return clips.map((c, i) => ({ c, buf: bufs[i] })).filter((x) => x.buf);
+  const out = clips.map((c, i) => ({ c, buf: bufs[i] })).filter((x) => x.buf);
+  out.incomplete = bufs.includes(undefined);
+  return out;
 }
 
 // Schedule the mix of timeline [from, to) on ctx, starting at ctx time `when`. Returns the source nodes (to stop).

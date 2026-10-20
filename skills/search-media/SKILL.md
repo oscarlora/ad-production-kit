@@ -17,11 +17,12 @@ tool uses it).
    ```
    node tools/search-media.mjs --media <brand>/inputs/media --query "bowl de res visto desde arriba" \
      [--type image|video|audio] [--orientation portrait|landscape|square] \
-     [--product "<name>"] [--person "<name>"] [--source generated|link|upload] [--limit 20] [--json]
+     [--product "<name>"] [--person "<name>"] [--source generated|link|upload] [--swipe] [--limit 20] [--json]
    node tools/search-media.mjs --media <brand>/inputs/media --like 00042 [filters]
    ```
    Queries match by meaning and keyword, in any language. A video hit shows `scene N @ start–end s`:
-   the moment to cut. `--like` finds assets that look or sound like one you picked. If the output
+   the moment to cut. `--like` finds assets that look or sound like one you picked. `--swipe` searches the swipe
+   items (ads to replicate) instead of the footage. If the output
    says `[keywords]`, vectors are missing; run `embed-media`.
 2. **Judge** — look at the top candidates' proxies (`_catalog/proxies/<id>.jpg`) or keyframes and
    keep only true matches.

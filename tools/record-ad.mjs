@@ -7,6 +7,7 @@
 //     "id": 41,
 //     "status": "in-progress | pending-review | approved",    // making it · made, waiting for the user · approved
 //     "concept":   { "product": "", "persona": "", "angle": "", "format": "" },
+//     "swipe":     "00198",                                           // the swipe item (catalog id) it replicates
 //     "meta":      { "headline": "", "primary_text": "" },            // Meta in-platform copy (write-meta-copy)
 //     "generation": {
 //       "model": "gpt-image-2.5", "resolution": "2K", "aspect": "4:5",

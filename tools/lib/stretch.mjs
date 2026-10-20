@@ -19,5 +19,6 @@ export function tempoOf(q) {
 }
 
 // Path of abs's sound at `rate` (lossless FLAC).
-export const stretched = (abs, rate) => cachedFile(abs, { cache: 'ad-production-kit-tempo', key: rate, ext: 'flac' },
-  (tmp) => runAsync('ffmpeg', ['-v', 'error', '-y', '-i', abs, '-vn', '-af', `aresample=async=1:first_pts=0,${atempo(rate)}`, tmp]));
+// -copyts keeps the file's own clock (without it, time starts at the first frame).
+export const stretched = (abs, rate) => cachedFile(abs, { cache: 'ad-production-kit-tempo', key: `ft${rate}`, ext: 'flac' },
+  (tmp) => runAsync('ffmpeg', ['-v', 'error', '-y', '-copyts', '-i', abs, '-vn', '-af', `aresample=async=1:first_pts=0,${atempo(rate)}`, tmp]));

@@ -18,14 +18,14 @@ back only follows the line it refers to.
 
 Give each a different job and show the plan as a numbered list before building:
 
-1. **The story, short** — the source's own arc with the middle trimmed: hook → story → product → CTA.
-2. **One argument** — one point carried end to end (say, the nutrient gap): hook → the point → the
-   turn → product → CTA.
+1. **The story, short** — the source's own arc with the middle trimmed: problem → story → product → CTA.
+2. **One argument** — one point carried end to end (say, the nutrient gap): the point → the turn →
+   product → CTA.
 3. **Results first** — open on the payoff, then reveal the cause: results → the answer → product → CTA.
 
-Each gets its own on-screen hook that matches its opening line. Every line keeps its approved
-wording, so a recut adds no new claim. Keep each under 30 s; drop a supporting sentence before you
-rush the pace.
+Each opens on a body line, never the source's hook takes (those are its own versions), with an
+on-screen hook that matches that line. Every line keeps its approved wording, so a recut adds no
+new claim. Keep each under 30 s; drop a supporting sentence before you rush the pace.
 
 ## 3. Build
 

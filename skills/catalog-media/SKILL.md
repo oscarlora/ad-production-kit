@@ -34,7 +34,8 @@ Flags: `--help`. Re-running is safe: cataloged files and near-duplicate re-expor
 logged with its reason), failed analyses retry, and a Drive folder pulls incrementally (**pull-media**),
 so the same command can run on a schedule. Run it as one job with a generous timeout.
 
-Pass `--generated` for what ADPK made. A folder **pull-media** downloaded into keeps each file's link
+Pass `--generated` for what ADPK made, `--swipe` for ads or posts to replicate (**replicate-ad**;
+kept out of footage searches). A folder **pull-media** downloaded into keeps each file's link
 as its source.
 
 Single steps: `analyze-media.mjs --media <…/media> --ids 00012 --force` (redo one),

@@ -8,9 +8,10 @@ const HELP = `search-media.mjs — search a brand's media catalog
 
   node tools/search-media.mjs --media <media dir> [--query "bowl seen from above"]
        [--like <id>] [--type image|video|audio] [--orientation portrait|landscape|square]
-       [--product "Acme Bowl"] [--person "Jane"] [--source generated|link|upload]
+       [--product "Acme Bowl"] [--person "Jane"] [--source generated|link|upload] [--swipe]
        [--keywords-only] [--limit 20] [--json]
     --like <id>      rank by similarity to that asset's description (combine with filters)
+    --swipe          search the swipe items (ads to replicate) instead of the footage
     --keywords-only  skip the vector ranking (and loading its local model)
     --json           machine-readable results`;
 
@@ -77,6 +78,7 @@ async function search(mediaDir, opts = {}) {
     if (opts.type && r.file?.type !== opts.type) return false;
     if (opts.orientation && r.file?.orientation !== opts.orientation) return false;
     if (opts.source && r.source?.kind !== opts.source) return false;
+    if (!!r.swipe !== !!opts.swipe) return false;
     if (opts.product) { const want = expand(opts.product); const have = (r.products || []).map(lc); if (!want.some((w) => have.some((h) => h.includes(w) || w.includes(h)))) return false; }
     if (opts.person) { const w = lc(opts.person); if (!haystacks(r).people.includes(w)) return false; }
     return true;
@@ -103,11 +105,11 @@ async function search(mediaDir, opts = {}) {
   return Object.assign(res, { mode });
 }
 
-const a = parseArgs(process.argv.slice(2), { flags: ['keywords-only', 'json'], help: HELP });
+const a = parseArgs(process.argv.slice(2), { flags: ['keywords-only', 'json', 'swipe'], help: HELP });
 const mediaArg = a.media || a._[0];
 if (!mediaArg) usage(HELP);
 const mediaDir = mediaDirFrom(mediaArg);
-const opts = { query: a.query === true ? '' : a.query, like: a.like, type: a.type, orientation: a.orientation, product: a.product, person: a.person, source: a.source, keywordsOnly: !!a['keywords-only'], limit: a.limit ? +a.limit : 20 };
+const opts = { query: a.query === true ? '' : a.query, like: a.like, type: a.type, orientation: a.orientation, product: a.product, person: a.person, source: a.source, swipe: !!a.swipe, keywordsOnly: !!a['keywords-only'], limit: a.limit ? +a.limit : 20 };
 const res = await search(mediaDir, opts);
 if (a.json) {
   console.log(JSON.stringify(res.map((r) => ({ id: r.id, type: r.file?.type, name: r.file?.name, path: `inputs/media/${r.file?.name}`, proxy: r.file?.type === 'image' ? `_catalog/proxies/${r.id}.jpg` : `_catalog/thumbs/${r.id}.jpg`, match: r._match, products: r.products, people: r.people })), null, 2));

@@ -2,12 +2,13 @@
 // catalog-media.mjs — media to searchable library in one command. Idempotent: duplicates are skipped
 // with their reason. A Drive folder is tracked in drive-sources.json, so re-runs download only new
 // files. Each record's source: generated (--generated), the link it was pulled from, or an upload.
+// --swipe marks the new files as swipe: ads to replicate, shown on Studio's Swipe page, not in footage searches.
 import { existsSync, mkdtempSync, readFileSync, rmSync, statSync } from 'node:fs';
 import { basename, join, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { catalogPaths, parseArgs, inferWorkspace, loadEnv, usage } from './lib/catalog.mjs';
+import { catalogPaths, mergeRecord, parseArgs, inferWorkspace, loadEnv, usage } from './lib/catalog.mjs';
 import { planAndProbe } from './lib/media-probe.mjs';
 import { analyzeMany } from './analyze-media.mjs';
 import { embedAll } from './embed-media.mjs';
@@ -22,15 +23,16 @@ const node = (script, args) => spawnSync(process.execPath, [join(TOOLS, script),
 const HELP = `catalog-media.mjs — media to searchable library: pull → probe → analyze → embed → index → push
 
   node tools/catalog-media.mjs --brand workspaces/<WS>/<Brand> [--source "<folder|Drive link|URL>"]
-       [--generated] [--jobs 2] [--no-push] [--dry-run]
+       [--generated | --swipe] [--jobs 2] [--no-push] [--dry-run]
     --source     what to add; without it, finishes what is pending and pushes
     --generated  the files were made by ADPK (else: the link each was pulled from, or an upload)
+    --swipe      the files are ads or content to replicate (Studio's Swipe page; search-media --swipe)
     --jobs       videos probed at once (default 2)
     --no-push    keep the library local (default: push to R2 when the workspace has keys)
     --dry-run    list what a Drive folder pull would download, then stop
 Analysis: Gemini on kie.ai (<WS>_KIE_API_KEY). Search vectors are made locally (no key).`;
 
-const a = parseArgs(process.argv.slice(2), { flags: ['no-push', 'dry-run', 'generated'], help: HELP });
+const a = parseArgs(process.argv.slice(2), { flags: ['no-push', 'dry-run', 'generated', 'swipe'], help: HELP });
 if (!a.brand) usage(HELP);
 if (a.jobs) process.env.MEDIA_JOBS = String(a.jobs);
 const brand = resolve(a.brand);
@@ -66,6 +68,7 @@ try {
     const manifest = await planAndProbe({ dir, media, sourceOf });
     fresh = manifest.filter((m) => !m.existing).length;
     newIds = manifest.filter((m) => !m.existing).map((m) => m.id);
+    if (a.swipe) for (const id of newIds) mergeRecord(paths, { id, swipe: true });
     for (const w of new Set(manifest.flatMap((m) => m.warnings || []))) console.error('WARN: ' + w);
     for (const m of manifest.filter((x) => x.existing && /^same bytes/.test(x.reason))) console.log(`skip ${basename(m.src)} — ${m.reason}`);
     console.log(`${manifest.length} files · ${fresh} new · ${manifest.length - fresh} already cataloged`);

@@ -7,8 +7,11 @@
 import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, copyFileSync, writeFileSync, renameSync, rmSync } from 'node:fs';
 import { join, basename, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
-import { inferWorkspace, parseArgs, isMedia, findBin, have, catalogPaths, usage, downloadFile } from './lib/catalog.mjs';
+import { inferWorkspace, parseArgs, isMedia, findBin, have, catalogPaths, usage, downloadFile, extForMime } from './lib/catalog.mjs';
 import { driveToken, driveApi, hasDriveCreds, listTree, downloadDriveFile, readDriveSources, FOLDER_MIME } from './lib/drive.mjs';
+
+// A Drive file named without its extension ("Copy of ad") gets it from its mime type.
+const withExt = (name, mime) => (isMedia(name) || !extForMime(mime) ? name : `${name}.${extForMime(mime)}`);
 
 const links = {};
 
@@ -44,7 +47,7 @@ async function pullDrive(source, out, W, { brand, dryRun } = {}) {
     if (dryRun) { console.log(`would download ${meta?.name || id}`); return 0; }
     const tmp = join(out, `.dl-${id}`);
     const { filename } = await downloadDriveFile(id, tmp, token);
-    const name = meta?.name || filename || `${id}.bin`;
+    const name = withExt(meta?.name || filename || `${id}.bin`, meta?.mimeType);
     if (!isMedia(name)) { rmSync(tmp); console.error(`skip ${name}: not a media file`); return 0; }
     const file = uniqueName(out, name);
     renameSync(tmp, join(out, file));
@@ -55,8 +58,8 @@ async function pullDrive(source, out, W, { brand, dryRun } = {}) {
   let tree;
   try { tree = await listTree(id, token); } catch (e) { console.error(e.message); process.exit(1); }
   const seen = (brand && readDriveSources(catalogPaths(brand))[id]?.files) || {};
-  const media = tree.files.filter((f) => !f.native && isMedia(f.name));
-  const notMedia = tree.files.filter((f) => !media.includes(f)).map((f) => f.name);
+  const media = tree.files.map((f) => ({ ...f, name: withExt(f.name, f.mimeType) })).filter((f) => !f.native && isMedia(f.name));
+  const notMedia = tree.files.filter((f) => !media.some((m) => m.id === f.id)).map((f) => f.name);
   const stale = (f) => f.modifiedTime && seen[f.id]?.modifiedTime && f.modifiedTime > seen[f.id].modifiedTime;
   const todo = media.filter((f) => !seen[f.id] || stale(f));
   const mb = (n) => (n == null ? '' : ` (${(n / 1e6).toFixed(1)} MB)`);

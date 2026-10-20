@@ -5,12 +5,12 @@ import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { brandUrl } from '../lib/client/api.js';
 import { words } from '../lib/client/format.js';
-import { IcAds, IcFlow, IcImage, IcSort } from './icons.js';
+import { IcAds, IcFlow, IcImage, IcSort, IcSwipe } from './icons.js';
 import Switcher from './Switcher.js';
 
 // URL segment → label; the first is the default.
-export const TABS = { board: 'Board', media: 'Media', workflow: 'Workflow' };
-const TAB_ICONS = { board: IcAds, media: IcImage, workflow: IcFlow };
+export const TABS = { board: 'Board', media: 'Media', swipe: 'Swipe', workflow: 'Workflow' };
+const TAB_ICONS = { board: IcAds, media: IcImage, swipe: IcSwipe, workflow: IcFlow };
 export const tabOr = (t) => (Object.hasOwn(TABS, t || '') ? t : 'board');
 
 // Ad statuses in workflow order (stored values: tools/record-ad.mjs) and their labels.

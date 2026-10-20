@@ -6,7 +6,7 @@ import { mediaType } from '../client/api.js';
 import { blockKind, inSections, isSeparator, parseDoc, tableCells } from '../markdown.js';
 import { adFolders } from './ads.js';
 import { readJson } from './brands.js';
-import { adDir, docNotes, editInfo } from './edit.js';
+import { adDir, docComments, editInfo } from './edit.js';
 
 const typeOf = (rel) => mediaType(rel) || /\.(md|txt|pdf)$/i.exec(rel)?.[1].toLowerCase() || 'other';
 
@@ -213,6 +213,8 @@ const any = (...preds) => (f) => preds.some((p) => p(f));
 const EXPORTED = any(ROOT_VIDEO, under('final', 'video')); // edit-video exports to final/
 // Each step lists the files that evidence it (and optionally record fields); optional steps show only when they have files.
 // A step with a section shows those sections of the newest root .md (the brief); pick narrows them to matching blocks, cols to matching table columns.
+// Every ad's brief opens with its concept section (block format: open-studio).
+const CONCEPT = { key: 'concept', label: 'Concept', section: /^concept/i, pick: /^(\*\*(Product|Persona|Angle|Message|For|Format|Concept Overview|Reference)(:|\*\*$)|!\[)/ };
 const FAMILIES = {
   image: [ // make-image-ad
     { key: 'prompt', label: 'Prompt', fields: (rec) => (rec?.generation?.prompt ? [['prompt', displayText(rec.generation.prompt)]] : []) },
@@ -237,7 +239,7 @@ const FAMILIES = {
   ],
   ugc: [ // creator-filmed: write-copy's brief template, built section by section, then the edit
     { key: 'profile', label: 'Profile', optional: true, files: (f) => f.rel === 'references/profile.md' }, // an ad for a known creator: their profile, reels as media blocks
-    { key: 'concept', label: 'Concept', section: /^concept/i, pick: /^(\*\*(Message|For|Format|Concept Overview|Reference)(:|\*\*$)|!\[)/ },
+    CONCEPT,
     { key: 'script', label: 'Script', section: /^(lines to camera|hooks|script)/i, pick: /^\|/, cols: /^(scene|line)$/i },
     { key: 'storyboard', label: 'Storyboard', section: /^(lines to camera|slides|b-?roll|visuals)/i, pick: /^\|/, files: under('slides', 'image') },
     { key: 'brief', label: 'Brief', files: any(ROOT_MD, (f) => /^analysis\.md$/i.test(f.rel)) },
@@ -275,10 +277,11 @@ function familyOf(format) {
 }
 
 function genericSteps(brandDirAbs, family, files, rec) {
+  const defs = FAMILIES[family].some((d) => d.key === 'concept') ? FAMILIES[family] : [CONCEPT, ...FAMILIES[family]];
   const brief = files.filter(ROOT_MD).pop();
-  const blocks = brief && FAMILIES[family].some((d) => d.section) ? parseDoc(readText(brandDirAbs, brief.p)).blocks : [];
+  const blocks = brief ? parseDoc(readText(brandDirAbs, brief.p)).blocks : [];
   const steps = [];
-  for (const def of FAMILIES[family]) {
+  for (const def of defs) {
     const sec = !!def.section && inSections(blocks, def.section).some((on, i) => on && (!def.pick || def.pick.test(blocks[i].src)));
     const own = [...(sec ? [brief] : []), ...(def.files ? files.filter(def.files) : [])];
     const fields = own.length ? [] : (def.fields?.(rec) || []).filter(([, v]) => v);
@@ -327,16 +330,6 @@ function withStates(steps) {
   return steps.map((s, i) => ({ ...s, state: s.done ? 'done' : i === last + 1 ? 'current' : 'todo' }));
 }
 
-// Every ad starts with the brand's research (research-brand): done once the brand has it, or the ad is past it.
-const RESEARCH = ['brand.md', 'customers.md', 'competitors.md', 'ads.md', 'DESIGN.md'];
-function researchStep(brandDirAbs, past) {
-  const inputs = join(brandDirAbs, 'inputs');
-  const list = (sub) => { try { return readdirSync(join(inputs, sub)).filter((n) => n.endsWith('.md')).sort().map((n) => (sub ? `${sub}/${n}` : n)); } catch { return []; } };
-  const rels = [...RESEARCH.filter((n) => list('').includes(n)), ...list('products')];
-  const files = rels.map((r) => ({ rel: r, p: `inputs/${r}`, v: Math.round(statSync(join(inputs, r)).mtimeMs), type: 'md' }));
-  return { key: 'research', label: 'Research', done: past || rels.includes('brand.md'), panel: files.length ? { files: present(files, files) } : {} };
-}
-
 function adWorkflow(brandDirAbs, folder) {
   const head = parseFolder(folder);
   const files = inventory(brandDirAbs, folder);
@@ -355,12 +348,12 @@ function adWorkflow(brandDirAbs, folder) {
   const edit = family === 'image' ? null : editInfo(dir);
   if (edit) {
     const last = steps[steps.length - 1];
-    const open = edit.notes.filter((n) => n.status === 'open' || n.status === 'seen').length;
-    const review = edit.notes.filter((n) => n.status === 'done').length;
-    const count = open ? `${open} note${open === 1 ? '' : 's'}` : review ? `${review} to review` : last.count;
+    const open = edit.comments.filter((n) => n.status === 'open' || n.status === 'seen').length;
+    const review = edit.comments.filter((n) => n.status === 'done').length;
+    const count = open ? `${open} comment${open === 1 ? '' : 's'}` : review ? `${review} to review` : last.count;
     Object.assign(last, { done: true, count, panel: { editor: true } });
   }
-  return { ...head, status: rec?.status || '', steps: withStates([researchStep(brandDirAbs, steps.some((s) => s.done)), ...steps]), storyboard, footage, edit, comments: docNotes(dir) };
+  return { ...head, status: rec?.status || '', steps: withStates(steps), storyboard, footage, edit, comments: docComments(dir) };
 }
 
 // The ad list: newest (highest id) first, each with its current step.

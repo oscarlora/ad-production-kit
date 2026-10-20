@@ -38,7 +38,8 @@ export async function createEngine({ canvas, url }) {
     pending = pending?.key === key ? pending : { key, p: (async () => {
       const s = await soundClips(doc, media, actx);
       const g = await normalizeGain(doc, s);
-      if (key === audioKey) { sounds = s; gain = g; }
+      if (key === audioKey) { gain = g; if (!s.incomplete) sounds = s; }
+      if (s.incomplete) pending = null; // a file failed to load: try again on the next play
       return s;
     })() };
     return pending.p;

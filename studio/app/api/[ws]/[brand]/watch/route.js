@@ -1,5 +1,4 @@
-// Live refresh: SSE `change` events from a recursive fs.watch of outputs/ and inputs/media/_catalog/, plus inputs/
-// and inputs/products/ (the brand's research, not the media below it): the first
+// Live refresh: SSE `change` events from a recursive fs.watch of outputs/ and inputs/media/_catalog/: the first
 // change at once, the rest of a burst once it settles.
 // The heartbeat keeps proxies from closing an idle connection.
 import { existsSync, watch } from 'node:fs';
@@ -14,7 +13,7 @@ const open = new Set();
 for (const sig of ['SIGTERM', 'SIGINT']) process.once(sig, () => { for (const end of open) end(); });
 
 export const GET = brandRoute((req, ctx) => {
-  const dirs = [[join(ctx.dir, 'outputs'), true], [join(ctx.dir, 'inputs', 'media', '_catalog'), true], [join(ctx.dir, 'inputs'), false], [join(ctx.dir, 'inputs', 'products'), false]]
+  const dirs = [[join(ctx.dir, 'outputs'), true], [join(ctx.dir, 'inputs', 'media', '_catalog'), true]]
     .filter(([d]) => existsSync(d));
 
   const encoder = new TextEncoder();

@@ -4,11 +4,13 @@
 import { useEffect, useRef, useState } from 'react';
 import { clock } from '../../lib/client/format.js';
 import { IcPause, IcPlay } from '../icons.js';
+import Film from '../Film.js';
+import Wave from '../Wave.js';
 
 const MIN = 0.1;
 
-export default function Trim({ clip, src, onApply, onClose }) {
-  const mediaRef = useRef(null), barRef = useRef(null), waveRef = useRef(null), filmRef = useRef(null), stopAt = useRef(null);
+export default function Trim({ clip, src, saved, onApply, onClose }) {
+  const mediaRef = useRef(null), barRef = useRef(null), stopAt = useRef(null);
   const [len, setLen] = useState(0); // the source's length (s)
   const out0 = clip.in + (clip.end - clip.at) * clip.rate;
   const [sel, setSel] = useState([clip.in, out0]);
@@ -16,43 +18,6 @@ export default function Trim({ clip, src, onApply, onClose }) {
   const [busy, setBusy] = useState(false);
   const selRef = useRef(sel);
   selRef.current = sel;
-
-  useEffect(() => { // the sound's waveform, when the browser can decode it
-    let dead = false;
-    (async () => {
-      const buf = await (await fetch(src)).arrayBuffer();
-      const actx = new OfflineAudioContext(1, 1, 44100);
-      const audio = await actx.decodeAudioData(buf);
-      if (dead) return;
-      const d = audio.getChannelData(0), n = 400, step = Math.floor(d.length / n), peaks = [];
-      for (let i = 0; i < n; i++) { let m = 0; for (let j = i * step; j < (i + 1) * step; j += 16) m = Math.max(m, Math.abs(d[j])); peaks.push(m); }
-      const top = Math.max(...peaks) || 1, cv = waveRef.current, g = cv.getContext('2d');
-      cv.width = n; cv.height = 40;
-      g.fillStyle = getComputedStyle(cv).color;
-      peaks.forEach((p, i) => { const h = Math.max(1, (p / top) * 38); g.fillRect(i, 20 - h / 2, 1, h); });
-    })().catch(() => {});
-    return () => { dead = true; };
-  }, [src]);
-
-  useEffect(() => { // frames along the source, for a video
-    if (clip.type !== 'video') return undefined;
-    let dead = false;
-    const v = document.createElement('video');
-    v.muted = true; v.preload = 'auto'; v.src = src;
-    (async () => {
-      await new Promise((ok, no) => { v.onloadeddata = ok; v.onerror = no; });
-      const cv = filmRef.current, box = cv.getBoundingClientRect(), k = window.devicePixelRatio || 1;
-      cv.width = Math.round(box.width * k); cv.height = Math.round(box.height * k);
-      const th = cv.height, tw = Math.round(th * 0.6), n = Math.ceil(cv.width / tw), g = cv.getContext('2d');
-      const vw = v.videoWidth, vh = v.videoHeight, sw = Math.min(vw, vh * 0.6), sh = sw / 0.6; // each tile: the frame's center, cropped
-      for (let i = 0; i < n && !dead; i++) {
-        v.currentTime = Math.min(v.duration - 0.05, ((i * tw + tw / 2) / cv.width) * v.duration);
-        await new Promise((ok) => { v.onseeked = ok; });
-        g.drawImage(v, (vw - sw) / 2, (vh - sh) / 2, sw, sh, i * tw, 0, tw, th);
-      }
-    })().catch(() => {});
-    return () => { dead = true; v.removeAttribute('src'); v.load(); };
-  }, [src, clip.type]);
 
   useEffect(() => {
     const onKey = (e) => { if (e.key === 'Escape') onClose(); };
@@ -116,8 +81,8 @@ export default function Trim({ clip, src, onApply, onClose }) {
           : <audio ref={mediaRef} src={src} preload="auto" onLoadedMetadata={(e) => setLen(e.currentTarget.duration)} onTimeUpdate={onTime} />}
         <div className="trim__strip">
           <div className="trim__bar" ref={barRef} data-video={isVideo || undefined}>
-            {isVideo && <canvas ref={filmRef} className="trim__film" aria-hidden="true" />}
-            <canvas ref={waveRef} className="trim__wave" aria-hidden="true" />
+            {isVideo && <Film className="trim__film" src={src} sprites={saved?.sprites} />}
+            <Wave className="trim__wave" src={src} peaks={saved?.peaks} />
             <div className="trim__sel" style={{ left: pct(sel[0]), width: pct(sel[1] - sel[0]) }} onPointerDown={drag('move')} title="Drag to slide">
               <span className="trim__edge trim__edge--start" onPointerDown={drag('start')} title="Drag to change the start" />
               <span className="trim__edge trim__edge--end" onPointerDown={drag('end')} title="Drag to change the end" />

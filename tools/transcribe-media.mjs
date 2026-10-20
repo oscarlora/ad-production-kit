@@ -26,7 +26,7 @@ Optional:
 Transcripts: Gemini on kie.ai (<WS>_KIE_API_KEY; optional fallback when kie fails: <WS>_AI_GATEWAY_API_KEY).
 
 Output: { model, language, text, segments:[{start,end,speaker,text}],
-          words?:[{start,end,word,speaker}], words_model? }`;
+          words?:[{start,end,word,speaker}], words_model?, disagree?:[{at,whisper,gemini}] (words to check) }`;
 
 async function libraryRecord(input, paths) {
   const recs = readRecords(paths);
@@ -76,6 +76,7 @@ async function main() {
     }
   }
 
+  if (result.disagree?.length) console.error(`check these words (Whisper's kept): ${result.disagree.map((d) => `${d.at}s "${d.whisper}" (Gemini: "${d.gemini}")`).join(', ')}`);
   mkdirSync(dirname(out), { recursive: true });
   writeFileSync(out, JSON.stringify(result, null, 2) + '\n');
   console.error(`segments  ${result.segments.length}${result.words ? `  words ${result.words.length} (${result.words_model || 'none'})` : ''}  [${result.language || '—'}]${spend.credits || spend.usd ? `  ${spendText()}` : ''}`);

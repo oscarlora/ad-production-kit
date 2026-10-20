@@ -1,5 +1,6 @@
 'use client';
 // The media library: masonry grid, filter bar, multi-select actions, video scrub, audio waves, and the viewer.
+// With `swipe`, the Swipe page: only the swipe items (ads to replicate), each with the ads made from it.
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { apiBase, getJson, mediaPath, mediaUrl, openFile } from '../../lib/client/api.js';
 import { clock } from '../../lib/client/format.js';
@@ -7,8 +8,8 @@ import { masonry, useBrandData, useColumns } from '../../lib/client/hooks.js';
 import { BarSelect, Bars, LoadError, SORTS } from '../BrandPage.js';
 import { IcCopy, IcDl, IcFile, IcFolder, IcFrame, IcFull, IcLink, IcSpark, IcUser } from '../icons.js';
 import { spriteCell } from '../Player.js';
+import Wave from '../Wave.js';
 import MediaViewer from './MediaViewer.js';
-import { Wave } from './wave.js';
 
 // A card's width / height: the file's, kept between 1:2 and 2:1; audio is a wide strip.
 const ratioOf = (r) => {
@@ -37,7 +38,7 @@ function matches(r, filters) {
   return true;
 }
 
-function Card({ ws, brand, rec, selected, onToggleSel, onOpen, actions }) {
+function Card({ ws, brand, rec, selected, onToggleSel, onOpen, actions, label }) {
   const t = rec.file?.type;
   const sprites = t === 'video' && rec.sprites && { ...rec.sprites, url: mediaUrl(ws, brand, rec.sprites.sheet) };
   const [x, setX] = useState(0); // the pointer across the card, 0–1, picks the scrub frame
@@ -55,11 +56,11 @@ function Card({ ws, brand, rec, selected, onToggleSel, onOpen, actions }) {
         onPointerMove={sprites ? (e) => { const r = e.currentTarget.getBoundingClientRect(); setX(Math.min(0.999, Math.max(0, (e.clientX - r.left) / r.width))); } : undefined}
       >
         {t === 'audio'
-          ? <Wave ws={ws} brand={brand} id={rec.id} />
+          ? <Wave src={mediaUrl(ws, brand, rec.file.name)} peaks={mediaUrl(ws, brand, `_catalog/peaks/${rec.id}.json`)} />
           : <img loading="lazy" src={mediaUrl(ws, brand, `_catalog/thumbs/${rec.id}.jpg`)} alt="" />}
         {sprites && <span className="g-card__scrub" style={spriteCell(sprites, x * (rec.file.duration || 0), rec.file.duration || 0)} />}
         <span className="g-card__meta">
-          <span className="nm">{rec.file?.name || ''}</span>
+          <span className="nm">{label ?? rec.file?.name ?? ''}</span>
           {rec.file?.duration != null && <span className="dur">{clock(rec.file.duration)}</span>}
         </span>
       </button>
@@ -73,7 +74,7 @@ function Card({ ws, brand, rec, selected, onToggleSel, onOpen, actions }) {
   );
 }
 
-export default function Gallery({ ws, brand }) {
+export default function Gallery({ ws, brand, swipe = false }) {
   const { data, setData, error, load, updatedAt } = useBrandData(ws, brand, 'media');
   const [filters, setFilters] = useState({ q: '', type: '', source: '', person: '', orientation: '', sort: 'new' });
   const [sel, setSel] = useState(() => new Set());
@@ -90,7 +91,8 @@ export default function Gallery({ ws, brand }) {
 
   useEffect(() => () => clearTimeout(toastTimer.current), []);
 
-  const records = data?.records || [];
+  const records = useMemo(() => (data?.records || []).filter((r) => !!r.swipe === swipe), [data, swipe]);
+  const madeFrom = data?.swipedBy || {};
   const view = useMemo(() => {
     const v = records.filter((r) => matches(r, filters));
     v.sort((a, b) => (filters.sort === 'old' ? String(a.id).localeCompare(String(b.id)) : String(b.id).localeCompare(String(a.id))));
@@ -151,8 +153,8 @@ export default function Gallery({ ws, brand }) {
   return (
     <div>
       <Bars
-        ws={ws} brand={brand} current="media" count={data ? `${view.length} of ${records.length} assets` : 'Loading'} updatedAt={updatedAt}
-        search={sel.size === 0 && <input className="input bar__search" placeholder="Search media" aria-label="Search media" value={filters.q} onChange={(e) => setF('q', e.target.value)} />}
+        ws={ws} brand={brand} current={swipe ? 'swipe' : 'media'} count={data ? `${view.length} of ${records.length} ${swipe ? 'swipe items' : 'assets'}` : 'Loading'} updatedAt={updatedAt}
+        search={sel.size === 0 && <input className="input bar__search" placeholder={swipe ? 'Search swipe' : 'Search media'} aria-label={swipe ? 'Search swipe' : 'Search media'} value={filters.q} onChange={(e) => setF('q', e.target.value)} />}
       >
         {sel.size > 0 ? (
           <>
@@ -176,7 +178,7 @@ export default function Gallery({ ws, brand }) {
       {error && <LoadError what="the media catalog" error={error} onRetry={load} />}
 
       <div className="grid-page">
-        {!error && data && view.length === 0 && <div className="empty-state">No media matches these filters.</div>}
+        {!error && data && view.length === 0 && <div className="empty-state">{swipe && !records.length ? 'No swipe items yet. Add them with catalog-media --swipe.' : 'No media matches these filters.'}</div>}
         <div className="masonry">
           {columns.map((col, ci) => (
             <div className="masonry__col" key={ci}>
@@ -188,6 +190,7 @@ export default function Gallery({ ws, brand }) {
                   onToggleSel={toggleSel}
                   onOpen={() => setViewerId(r.id)}
                   actions={actions}
+                  label={swipe ? (madeFrom[r.id] ? `Ads ${madeFrom[r.id].join(', ')}` : 'To swipe') : undefined}
                 />
               ))}
             </div>

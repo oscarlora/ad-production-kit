@@ -107,9 +107,10 @@ export function ffprobeJson(file) {
   const r = run('ffprobe', ['-v', 'quiet', '-print_format', 'json', '-show_format', '-show_streams', file], { allowFail: true });
   try { return JSON.parse(r.stdout || '{}'); } catch { return {}; }
 }
-// A file's audio as mono 16-bit samples at `rate` Hz, or null.
+// A file's audio as mono 16-bit samples at `rate` Hz, or null, on the file's own clock: a video's audio can start
+// after its first frame (often ~0.5 s), so that lead is padded with silence, as the editor and audioTrack do.
 export function pcm(file, rate) {
-  const r = run('ffmpeg', ['-v', 'quiet', '-i', file, '-ac', '1', '-ar', String(rate), '-f', 's16le', '-'], { allowFail: true, binary: true });
+  const r = run('ffmpeg', ['-v', 'quiet', '-copyts', '-i', file, '-vn', '-af', 'aresample=async=1:first_pts=0', '-ac', '1', '-ar', String(rate), '-f', 's16le', '-'], { allowFail: true, binary: true });
   return r.stdout?.length ? new Int16Array(r.stdout.buffer, r.stdout.byteOffset, Math.floor(r.stdout.length / 2)) : null;
 }
 // Loudness of a file's audio in 10 ms frames (dB), or null.

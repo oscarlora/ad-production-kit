@@ -20,6 +20,14 @@ export async function mediaRecords(brandDirAbs) {
   return readRecords(paths).sort((x, y) => String(x.id).localeCompare(String(y.id)));
 }
 
+// Swipe item id -> the ids of the ads made from it (an ad record's `swipe`).
+export async function swipedBy(brandDirAbs) {
+  const { readRecords } = await catalogLib();
+  const out = {};
+  for (const ad of readRecords({ json: join(brandDirAbs, 'outputs', 'json') })) if (ad.swipe) (out[ad.swipe] ||= []).push(ad.id);
+  return out;
+}
+
 export async function mediaRecord(brandDirAbs, id) {
   if (!isMediaId(id)) return null;
   const { readRecord } = await catalogLib();

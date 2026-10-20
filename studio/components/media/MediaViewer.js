@@ -7,8 +7,8 @@ import { useCopied } from '../../lib/client/hooks.js';
 import { Param } from '../BrandPage.js';
 import Player from '../Player.js';
 import ViewerShell from '../ViewerShell.js';
+import Wave from '../Wave.js';
 import { IcBox, IcClock, IcDl, IcFile, IcFolder, IcFrame, IcFull, IcGlobe, IcHash, IcLink, IcOpen, IcPanelClose, IcPanelOpen, IcQuote, IcServer, IcText, IcUser } from '../icons.js';
-import { Wave } from './wave.js';
 
 const csv = (v) => String(v || '').split(',').map((s) => s.trim()).filter(Boolean);
 
@@ -39,7 +39,7 @@ function AudioStage({ ws, brand, rec }) {
   return (
     <div className="wf-wrap">
       <Wave
-        ws={ws} brand={brand} id={rec.id} color="--line-strong" progress={dur && time ? time / dur : -1}
+        src={mediaUrl(ws, brand, rec.file.name)} peaks={mediaUrl(ws, brand, `_catalog/peaks/${rec.id}.json`)} aria-hidden={undefined} progress={dur && time ? time / dur : -1}
         onClick={(e) => { const r = e.currentTarget.getBoundingClientRect(); seek(((e.clientX - r.left) / r.width) * (audio.current?.duration || dur)); }}
       />
       <Player

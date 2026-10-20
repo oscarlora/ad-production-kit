@@ -119,16 +119,15 @@ export class Media {
       const p = (async () => {
         const r = await fetch(key);
         if (!r.ok) throw new Error(`${src}: HTTP ${r.status}`);
-        const buf = await ctx.decodeAudioData(await r.arrayBuffer());
-        // decodeAudioData drops where the track starts in the file; a video's audio often starts ~0.5 s
-        // after its first frame. Pad that lead back so buffer time = file time, like the video frames.
-        const track = await new Input({ source: new UrlSource(key), formats: ALL_FORMATS }).getPrimaryAudioTrack().catch(() => null);
-        const lead = Math.round(Math.max(0, (await track?.getFirstTimestamp().catch(() => 0)) || 0) * buf.sampleRate);
+        const buf = await ctx.decodeAudioData(await r.arrayBuffer()).catch(() => null);
+        if (!buf) return null; // a video without sound plays silent
+        // Pad the lead decodeAudioData drops, so buffer time = file time, like the video frames.
+        const lead = Math.round((await audioLead(key)) * buf.sampleRate);
         if (lead < buf.sampleRate / 100) return buf;
         const out = new AudioBuffer({ numberOfChannels: buf.numberOfChannels, length: buf.length + lead, sampleRate: buf.sampleRate });
         for (let ch = 0; ch < buf.numberOfChannels; ch++) out.copyToChannel(buf.getChannelData(ch), ch, lead);
         return out;
-      })().catch(() => null); // a video without sound plays silent
+      })().catch(() => { this.audio.delete(key); return undefined; }); // a failed fetch: undefined, retried next time
       this.audio.set(key, p);
     }
     return this.audio.get(key);
@@ -151,6 +150,11 @@ export class Media {
 }
 
 // Families the doc uses: doc.fonts maps a family to a font file; any other loads from Google Fonts by name.
+// Where a file's sound starts on its own clock (s). decodeAudioData drops it, and a video's audio often starts
+// ~0.5 s after its first frame.
+export const audioLead = async (url) => Math.max(0, (await new Input({ source: new UrlSource(url), formats: ALL_FORMATS })
+  .getPrimaryAudioTrack().then((t) => t?.getFirstTimestamp()).catch(() => 0)) || 0);
+
 export async function loadFonts(doc, url) {
   if (typeof document === 'undefined') return;
   const fams = new Map(); // family -> weights

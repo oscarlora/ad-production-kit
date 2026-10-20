@@ -10,6 +10,7 @@
 //     "file": { "name","type":"image|video|audio","mime","bytes","width","height",
 //               "orientation","aspect","duration","original" },   // original = the file name it came in as
 //     "source": { "kind":"generated|link|upload", "url" },   // url = where a link file was pulled from
+//     "swipe": true,                   // an ad or post to replicate (catalog-media --swipe), not footage
 //     "products": [], "people": [], "unknown_people": [{ "ref","description" }],
 //     "analysis": "",                  // video: its scenes, "[start–end s] description" each
 //     "analyzed_by": { "model","at" },
