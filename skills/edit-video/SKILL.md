@@ -136,5 +136,11 @@ approval). `node tools/edit-video.mjs export outputs/<ad>/edit.json` (or the use
 brief template if it has one. `--scale 0.5` makes a quick draft,
 `--from`/`--to` a section. Never grade your own render; hand over the path.
 
+HDR phone footage (iPhone HLG / Dolby Vision, PQ, BT.2020) is tone-mapped to SDR BT.709 automatically
+(tools/lib/hdr.mjs: libplacebo, else zscale + hable, else a plain colorspace conversion), so preview and export
+match what the phone shows instead of looking washed out. The SDR copy is made once per file (cached in the OS
+temp folder; the first preview or export of a long clip waits for it, roughly 0.75x real time). SDR files pass
+through untouched, and exports are tagged BT.709. Or shoot SDR: iPhone Settings > Camera > Record Video > HDR Video off.
+
 With R2, final cuts are heavy files a plain push skips: push with
 `node tools/sync-brand.mjs --push workspaces/<WS>/<Brand> --originals`.

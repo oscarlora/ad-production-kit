@@ -7,7 +7,7 @@ import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { within } from '../../../../../lib/server/brands.js';
 import { sharedLibraryDir } from '../../../../../lib/server/root.js';
-import { catalogLib, r2For, stretchLib } from '../../../../../lib/server/tools.js';
+import { catalogLib, hdrLib, r2For, stretchLib } from '../../../../../lib/server/tools.js';
 import { brandRoute, fileResponse, jsonRes } from '../../../../../lib/server/http.js';
 
 // The fitted copy's path, or the original when it isn't an image or can't be resized.
@@ -24,7 +24,7 @@ export const GET = brandRoute(async (req, ctx) => {
   const q = new URL(req.url).searchParams;
   const rel = q.get('p') || '';
   if (!rel || rel.includes('\0')) return jsonRes({ error: 'bad path' }, 400);
-  const abs = resolve(ctx.dir, rel);
+  let abs = resolve(ctx.dir, rel);
   if (!within(ctx.dir, abs) && !within(sharedLibraryDir(), abs)) return jsonRes({ error: 'forbidden' }, 403);
 
   const relPosix = rel.replace(/\\/g, '/');
@@ -33,9 +33,11 @@ export const GET = brandRoute(async (req, ctx) => {
     if (r2) return Response.redirect(r2.presignGet(`${ctx.brand}/${relPosix}`, 3600), 302);
   }
   const { stretched, soundRate } = await stretchLib();
+  const { sdrSource } = await hdrLib();
   const rate = soundRate(q);
   if (rate && !existsSync(abs)) return jsonRes({ error: 'not found' }, 404);
   try {
+    if (!rate && !q.has('dl') && existsSync(abs)) abs = await sdrSource(abs); // an HDR video's SDR copy, as the export decodes (tools/lib/hdr.mjs)
     return fileResponse(req, rate ? await stretched(abs, rate) : q.get('w') ? await fitted(abs, +q.get('w') || 800) : abs);
   } catch (e) {
     return jsonRes({ error: String(e.message || e) }, 500);

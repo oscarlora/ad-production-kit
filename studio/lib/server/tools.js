@@ -16,6 +16,7 @@ function load(rel) {
 export const catalogLib = () => load(join('tools', 'lib', 'catalog.mjs'));
 export const recordMediaTool = () => load(join('tools', 'record-media.mjs'));
 export const stretchLib = () => load(join('tools', 'lib', 'stretch.mjs'));
+export const hdrLib = () => load(join('tools', 'lib', 'hdr.mjs'));
 const r2Lib = () => load(join('tools', 'lib', 'r2.mjs'));
 
 // R2 client for a workspace (read-only for a public bucket without creds), or null.

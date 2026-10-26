@@ -10,6 +10,7 @@ import { tmpdir } from 'node:os';
 import { brandDirFrom, die, ffprobeJson, loudness, markEditing, mimeOf, parseArgs, readEditing, round, run, sessionId, typeOf, usage } from './lib/catalog.mjs';
 import { compose, eachKeyed, endOf, keyed, r3, val } from '../studio/engine/doc.js';
 import { atempo, soundRate, stretched } from './lib/stretch.mjs';
+import { sdrSource, tagBt709 } from './lib/hdr.mjs';
 import { fetchMissing } from './lib/r2.mjs';
 import { hear, vocabulary } from './lib/transcribe.mjs';
 
@@ -40,6 +41,9 @@ const HELP = `edit-video.mjs — an ad's edit document (outputs/<ad>/edit.json)
   reframe  <edit.json> --size 1080x1350 --out <edit-v2.json>   the edit in another frame size (positions and
                                                   sizes scaled; media still fills the frame)
   export   <edit.json> [--out <mp4>] [--scale 0.5] [--from s] [--to s] [--timeout 1800] [--allow-black]
+                                                  HDR sources (iPhone HLG/Dolby Vision, PQ, BT.2020) are tone-mapped
+                                                  to SDR BT.709 first (a cached copy, made once per file; SDR files
+                                                  untouched); the MP4 is tagged BT.709
                                                   H.264 + AAC; default out: the doc's "output", else
                                                   final/<id>_V<n>_<rest of folder>.mp4 (n from edit-v<n>.json)
   audio    <edit.json> [--from s] [--to s] [--out <wav>] [--transcribe]   the mix alone, no picture: check a change
@@ -468,6 +472,7 @@ async function runPage(planPath, query, outPath, { timeout = 1800, onProgress } 
     try { st = statSync(file); } catch { return res.writeHead(404).end(); }
     const rate = soundRate(u.searchParams); // the sound alone or at another speed: the same file Studio serves
     if (rate) { try { file = await stretched(file, rate); st = statSync(file); } catch (e) { return res.writeHead(500).end(String(e.message)); } }
+    else { try { file = await sdrSource(file); st = statSync(file); } catch (e) { return res.writeHead(500).end(String(e.message)); } } // HDR: its SDR copy (tools/lib/hdr.mjs)
     const m = /bytes=(\d*)-(\d*)/.exec(req.headers.range || '');
     const head = { 'Content-Type': mimeOf(file), 'Accept-Ranges': 'bytes', 'Access-Control-Allow-Origin': '*' };
     if (!m) return createReadStream(file).pipe(res.writeHead(200, { ...head, 'Content-Length': st.size }));
@@ -518,6 +523,7 @@ async function exportCmd(p) {
       timeout: +(args.timeout || 1800),
       onProgress: (x) => { setStatus(p, { state: 'running', progress: x }); if (x - shown >= 0.25) { shown = x; console.error(`${Math.round(x * 100)}%`); } },
     });
+    if (!tagBt709(out)) console.error('WARN: could not retag the export as BT.709');
     const meta = ffprobeJson(out);
     const rel = relative(dirname(p), out).split(sep).join('/');
     setStatus(p, { state: 'done', out: rel, seconds: round((Date.now() - t0) / 1000) });
