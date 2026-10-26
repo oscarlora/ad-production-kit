@@ -1,6 +1,6 @@
 ---
 name: generate-voice
-description: Design and generate natural voiceovers with Gemini 3.8 Flash TTS through tools/generate-voice.mjs. Use when an ad needs narration, dialogue, a voice take, a pronunciation correction, a pacing change, a designed speaker voice, or a voice isolated from music or re-voiced (ElevenLabs).
+description: Design and generate natural voiceovers with Gemini 3.8 Flash TTS through tools/generate-voice.mjs. Use when an ad needs narration, dialogue, a voice take, a pronunciation correction, a pacing change, a designed speaker voice, or a voice isolated from music or re-voiced (ElevenLabs, or local DeepFilterNet).
 ---
 
 # Generate voice
@@ -61,14 +61,21 @@ node tools/generate-voice.mjs \
 
 Labeled dialogue (`--voices-file`) and every other flag: `--help`. Keep earlier takes with `-a`, `-b`, `-c` suffixes.
 
-## Isolate or re-voice (ElevenLabs)
+## Isolate or re-voice (ElevenLabs, or local DeepFilterNet)
 
 `tools/fix-voice.mjs` (`--help`) fixes a real speaker's voice. It needs `<WS>_ELEVENLABS_API_KEY`;
 ask for it only when this fix comes up (they paste it into `.env`):
 
-- **`isolate`** only when background noise gets in the way of the speech: ElevenLabs isolation with
+- **`isolate`** only when background noise gets in the way of the speech: the isolated voice with
   the original 18 dB under it, EQ'd and leveled per clip (ffmpeg's `afftdn` and RNNoise sound watery or
-  miss music and other voices).
+  miss music and other voices). With a key it uses ElevenLabs; with `--local`, or when there is no
+  key, it runs **DeepFilterNet 3** on this computer (free, nothing uploaded, Mac Apple Silicon/Intel and
+  Windows x64; `deep-filter` 0.5.6 downloads once into the gitignored `tools/bin/`, or run
+  `install-local`). It extracts 48 kHz audio, runs `deep-filter -D` (delay-compensated, stays in sync)
+  and works on a whole finished video: `isolate <final>.mp4 --out <dir> --local --remux --lufs -14`
+  writes `<dir>/<name>.mp4` with the video stream copied. About 30 s for 9 min of audio. Local is
+  strong on room noise, hum and hiss but **weak on music, other voices and heavy reverb**: use
+  ElevenLabs for those.
 - **`clone`** once per speaker, from their clearest clips in the same room; keep the voice id in the
   brand's `memory.md`.
 - **`patch`** a word they mumbled or cut off (**review-ugc-footage**): isolation and Speech-to-Speech

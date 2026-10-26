@@ -10,3 +10,6 @@ workspaces/
 
 # The Mac app build (desktop/).
 desktop/dist/
+
+# Local tool binaries downloaded on first use (e.g. DeepFilterNet deep-filter).
+tools/bin/
