@@ -22,6 +22,12 @@ const HELP = `fix-voice.mjs — clean a speaker's voice and re-say mumbled words
   node tools/fix-voice.mjs install-local
       Downloads DeepFilterNet's deep-filter 0.5.6 for this OS/chip into tools/bin/ (gitignored).
       isolate --local does this by itself the first time.
+  node tools/fix-voice.mjs enhance <clip>... --out <dir> [--lufs -14] [--nfe 32] [--remux]
+      "Pro mic" restoration with Resemble Enhance (local, Mac and Windows, Python 3.10/3.11): denoises,
+      removes room tone and rebuilds a full-band 44.1 kHz studio voice → <dir>/<name>.wav at --lufs LUFS.
+      Heavy: ~2x real time on 8 CPU cores, faster on Apple MPS / CUDA. Run it when the computer is idle,
+      or on a spare machine. First run creates tools/.venv-enhance and downloads the model (~1 GB).
+      --remux: for a video clip, also write <dir>/<name>.mp4 (video stream copied).
   node tools/fix-voice.mjs clone --name "<speaker>" <clip>... [--out <dir>]
       Instant voice clone from the speaker's clearest clips (same room as the patch). Prints the voice id;
       keep it in the brand's memory.md so later fixes reuse it.
@@ -140,6 +146,44 @@ async function isolateLocal(out, bed) {
   }
 }
 
+// Resemble Enhance in its own venv (tools/.venv-enhance), weights from Hugging Face (no git-lfs needed).
+const TOOLS = dirname(fileURLToPath(import.meta.url));
+const VENV = join(TOOLS, '.venv-enhance');
+const vpy = () => join(VENV, process.platform === 'win32' ? 'Scripts/python.exe' : 'bin/python');
+function installEnhance() {
+  if (existsSync(join(VENV, '.ok'))) return vpy();
+  const py = ['python3.11', 'python3.10', 'py', 'python3', 'python'].find((p) => spawnSync(p, [...(p === 'py' ? ['-3.11'] : []), '--version']).status === 0)
+    || die('Python 3.10 or 3.11 is needed for enhance');
+  const sh = (c, a) => { const r = spawnSync(c, a, { stdio: 'inherit' }); if (r.status !== 0) die(`${c} ${a.join(' ')} failed`); };
+  console.log(`creating ${VENV} (one time)`);
+  sh(py, [...(py === 'py' ? ['-3.11'] : []), '-m', 'venv', VENV]);
+  const pip = (a) => sh(vpy(), ['-m', 'pip', 'install', '-q', ...a]);
+  pip(['torch', 'torchaudio', 'soundfile', 'huggingface_hub', 'scipy', 'librosa', 'omegaconf', 'tqdm', 'rich', 'resampy', 'tabulate', 'celluloid', 'matplotlib', 'pandas', 'ptflops']);
+  pip(['--no-deps', 'resemble-enhance']);
+  writeFileSync(join(VENV, '.ok'), '');
+  return vpy();
+}
+async function enhance() {
+  const out = resolve(args.out || usage(HELP));
+  if (!rest.length) usage(HELP);
+  const py = installEnhance(), helper = join(TOOLS, 'lib', 'enhance_voice.py');
+  mkdirSync(join(out, 'raw'), { recursive: true });
+  for (const f of rest) {
+    const n = nameOf(f), raw = join(out, 'raw', `${n}.wav`), enh = join(out, 'raw', `${n}.enhanced.wav`), t0 = Date.now();
+    ff(['-i', f, '-vn', '-ac', '1', '-ar', '44100', raw]);
+    const r = spawnSync(py, [helper, raw, enh, String(args.nfe || 32), join(VENV, 'model')], { stdio: 'inherit' });
+    if (r.status !== 0) die(`enhance failed on ${f}`);
+    const wav = join(out, `${n}.wav`);
+    ff(['-i', enh, '-af', `loudnorm=I=${+(args.lufs ?? -14)}:TP=-1.5:LRA=11`, '-ar', '48000', '-ac', '1', wav]);
+    if (args.remux && hasVideo(f)) {
+      const mp4 = join(out, `${n}.mp4`);
+      ff(['-i', f, '-i', wav, '-map', '0:v:0', '-map', '1:a:0', '-c:v', 'copy', '-c:a', 'aac', '-b:a', '256k', '-shortest', '-movflags', '+faststart', mp4]);
+      console.log(`remuxed   ${mp4}`);
+    }
+    console.log(`enhanced  ${n} (Resemble Enhance, ${round((Date.now() - t0) / 1000, 1)} s)`);
+  }
+}
+
 async function clone() {
   if (!args.name || !rest.length) usage(HELP);
   const k = key(resolve(args.out || rest[0]));
@@ -190,6 +234,6 @@ async function patch() {
   }
 }
 
-const cmds = { isolate, clone, patch, 'install-local': async () => console.log(await installLocal()) };
+const cmds = { isolate, enhance, clone, patch, 'install-local': async () => console.log(await installLocal()) };
 if (!cmds[cmd]) usage(HELP);
 await cmds[cmd]();
