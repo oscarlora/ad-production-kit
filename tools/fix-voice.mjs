@@ -1,27 +1,22 @@
 #!/usr/bin/env node
 // fix-voice.mjs — clean a speaker's voice and re-say mumbled words, with ElevenLabs (<WS>_ELEVENLABS_API_KEY)
-// or, for isolate, locally with DeepFilterNet 3 (no key; Mac arm64/x64 and Windows x64).
+// or locally with Resemble Enhance (enhance: pro-mic restoration, no key).
 // When to use it: generate-voice (Isolate or re-voice).
-import { chmodSync, existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { basename, dirname, extname, join, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
 import { die, inferWorkspace, parseArgs, round, run, sleep, usage, wsKey } from './lib/catalog.mjs';
 
-const HELP = `fix-voice.mjs — clean a speaker's voice and re-say mumbled words (ElevenLabs).
+const HELP = `fix-voice.mjs — clean a speaker's voice and re-say mumbled words (ElevenLabs, Resemble Enhance).
 
-  node tools/fix-voice.mjs isolate <clip>... --out <dir> [--bed -18] [--lufs -16] [--local] [--remux]
+  node tools/fix-voice.mjs isolate <clip>... --out <dir> [--bed -18] [--lufs -16] [--remux]
       Each clip (video or audio) → <dir>/raw/<name>.wav (its own audio), <dir>/isolated/<name>.wav
       (voice isolation) and <dir>/<name>.wav: the isolated voice with the raw audio --bed dB
       under it, EQ'd, compressed and leveled to --lufs LUFS. Use when background noise gets in the way.
-      Engine: ElevenLabs when <WS>_ELEVENLABS_API_KEY is set; --local (or no key) uses DeepFilterNet 3
-      on this computer (free, private, ~1 min per 10 min of audio). Local is great on room noise, hum
-      and hiss; weak on music, other voices and heavy reverb (use ElevenLabs for those).
+      Needs <WS>_ELEVENLABS_API_KEY; without one, use enhance below (local, no key).
       --remux: for a video clip, also write <dir>/<name>.mp4 with the clean audio (video stream copied).
-  node tools/fix-voice.mjs install-local
-      Downloads DeepFilterNet's deep-filter 0.5.6 for this OS/chip into tools/bin/ (gitignored).
-      isolate --local does this by itself the first time.
   node tools/fix-voice.mjs enhance <clip>... --out <dir> [--lufs -14] [--nfe 32] [--remux]
       "Pro mic" restoration with Resemble Enhance (local, Mac and Windows, Python 3.10/3.11): denoises,
       removes room tone and rebuilds a full-band 44.1 kHz studio voice → <dir>/<name>.wav at --lufs LUFS.
@@ -39,28 +34,6 @@ const HELP = `fix-voice.mjs — clean a speaker's voice and re-say mumbled words
       isolate → <dir>/<name>-fix-a.wav, -b, -c (+ .mp4 previews with --video). The user picks by ear.
       --before/--after: the words around the patch, so the take's intonation fits.`;
 
-const DF_VERSION = '0.5.6';
-const DF_ASSETS = { 'darwin-arm64': 'aarch64-apple-darwin', 'darwin-x64': 'x86_64-apple-darwin', 'win32-x64': 'x86_64-pc-windows-msvc.exe' };
-const BIN_DIR = join(dirname(fileURLToPath(import.meta.url)), 'bin');
-const dfPath = () => join(BIN_DIR, process.platform === 'win32' ? 'deep-filter.exe' : 'deep-filter');
-// Install once: the release binary for this OS/chip → tools/bin/deep-filter(.exe), executable, unquarantined.
-async function installLocal() {
-  const bin = dfPath();
-  if (existsSync(bin)) return bin;
-  const asset = DF_ASSETS[`${process.platform}-${process.arch}`]
-    || die(`no DeepFilterNet build for ${process.platform}-${process.arch} (Mac arm64/x64 and Windows x64 only): use ElevenLabs`);
-  const url = `https://github.com/Rikorose/DeepFilterNet/releases/download/v${DF_VERSION}/deep-filter-${DF_VERSION}-${asset}`;
-  console.log(`installing deep-filter ${DF_VERSION} (${asset}) → ${bin}`);
-  const r = await fetch(url);
-  if (!r.ok) die(`download ${url}: ${r.status}`);
-  mkdirSync(BIN_DIR, { recursive: true });
-  const tmp = `${bin}.part`;
-  writeFileSync(tmp, Buffer.from(await r.arrayBuffer()));
-  renameSync(tmp, bin);
-  if (process.platform !== 'win32') chmodSync(bin, 0o755);
-  if (process.platform === 'darwin') spawnSync('xattr', ['-d', 'com.apple.quarantine', bin]);
-  return bin;
-}
 const wsKeyOrNull = (p) => { const ws = inferWorkspace(p); return ws ? wsKey(ws, 'ELEVENLABS_API_KEY') : null; };
 const hasVideo = (f) => /video/.test(run('ffprobe', ['-v', 'error', '-select_streams', 'v', '-show_entries', 'stream=codec_type', '-of', 'csv=p=0', f], { allowFail: true }).stdout || '');
 
@@ -102,8 +75,7 @@ const finish = (iso, raw, bedDb, out) => { const x = new Float32Array(iso.length
 async function isolate() {
   const out = resolve(args.out || usage(HELP)), bed = +(args.bed ?? -18);
   if (!rest.length) usage(HELP);
-  const local = args.local || !wsKeyOrNull(out);
-  if (local) return isolateLocal(out, bed);
+  if (!wsKeyOrNull(out)) die(`isolate needs <WS>_ELEVENLABS_API_KEY in .env; without a key use enhance (local): node tools/fix-voice.mjs enhance ${rest.join(' ')} --out ${args.out} --remux`);
   const k = key(out);
   for (const d of ['raw', 'isolated']) mkdirSync(join(out, d), { recursive: true });
   const queue = [...rest];
@@ -114,36 +86,16 @@ async function isolate() {
       const mp3 = join(out, 'isolated', `${n}.mp3`);
       writeFileSync(mp3, await eleven(k, '/v1/audio-isolation', form({}, [['audio', raw]])));
       ff(['-i', mp3, '-ac', '1', '-ar', String(SR), iso]); rmSync(mp3);
-      finish(readF32(iso), readF32(raw), bed, join(out, `${n}.wav`));
+      const wav = join(out, `${n}.wav`);
+      finish(readF32(iso), readF32(raw), bed, wav);
+      if (args.remux && hasVideo(f)) {
+        const mp4 = join(out, `${n}.mp4`);
+        ff(['-i', f, '-i', wav, '-map', '0:v:0', '-map', '1:a:0', '-c:v', 'copy', '-c:a', 'aac', '-b:a', '256k', '-ar', '48000', '-shortest', '-movflags', '+faststart', mp4]);
+        console.log(`remuxed   ${mp4}`);
+      }
       console.log(`isolated  ${n}`);
     }
   }));
-}
-
-// DeepFilterNet only takes 48 kHz WAV; -D compensates its delay so the voice stays in sync.
-async function isolateLocal(out, bed) {
-  const df = await installLocal();
-  for (const d of ['raw', 'isolated', 'df48']) mkdirSync(join(out, d), { recursive: true });
-  for (const f of rest) {
-    const n = nameOf(f), raw = join(out, 'raw', `${n}.wav`), iso = join(out, 'isolated', `${n}.wav`);
-    const in48 = join(out, 'df48', `${n}.wav`), dfOut = join(out, 'df48', 'out');
-    const t0 = Date.now();
-    ff(['-i', f, '-vn', '-ac', '1', '-ar', String(SR), raw]);
-    ff(['-i', f, '-vn', '-ac', '1', '-ar', '48000', '-c:a', 'pcm_s16le', in48]);
-    mkdirSync(dfOut, { recursive: true });
-    const r = spawnSync(df, ['-D', '-o', dfOut, in48], { encoding: 'utf8', maxBuffer: 1 << 26 });
-    if (r.status !== 0) die(`deep-filter failed on ${f}: ${r.stderr || r.error}`);
-    ff(['-i', join(dfOut, `${n}.wav`), '-ac', '1', '-ar', String(SR), iso]);
-    rmSync(join(out, 'df48'), { recursive: true, force: true });
-    const wav = join(out, `${n}.wav`);
-    finish(readF32(iso), readF32(raw), bed, wav);
-    if (args.remux && hasVideo(f)) {
-      const mp4 = join(out, `${n}.mp4`);
-      ff(['-i', f, '-i', wav, '-map', '0:v:0', '-map', '1:a:0', '-c:v', 'copy', '-c:a', 'aac', '-b:a', '256k', '-ar', '48000', '-shortest', '-movflags', '+faststart', mp4]);
-      console.log(`remuxed   ${mp4}`);
-    }
-    console.log(`isolated  ${n} (DeepFilterNet, ${round((Date.now() - t0) / 1000, 1)} s)`);
-  }
 }
 
 // Resemble Enhance in its own venv (tools/.venv-enhance), weights from Hugging Face (no git-lfs needed).
@@ -234,6 +186,6 @@ async function patch() {
   }
 }
 
-const cmds = { isolate, enhance, clone, patch, 'install-local': async () => console.log(await installLocal()) };
+const cmds = { isolate, enhance, clone, patch };
 if (!cmds[cmd]) usage(HELP);
 await cmds[cmd]();

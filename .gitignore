@@ -11,5 +11,5 @@ workspaces/
 # The Mac app build (desktop/).
 desktop/dist/
 
-# Local tool binaries downloaded on first use (e.g. DeepFilterNet deep-filter).
-tools/bin/
+# Local tool venvs and models set up on first use (e.g. Resemble Enhance: tools/.venv-enhance).
+tools/.venv-*/

@@ -20,5 +20,5 @@ description: Install ADPK and get it ready — the setup script, the user's work
    ask them to reopen the agent there so it loads AGENTS.md.
 
 Everything else waits until a step needs it: R2 (a team needs it to share brands; solo is optional),
-Drive and Notion keys, and ffmpeg 8, Pillow, yt-dlp, the export browser and DeepFilterNet (`fix-voice.mjs install-local`, into the gitignored `tools/bin/`; the tool that needs one
+Drive and Notion keys, and ffmpeg 8, Pillow, yt-dlp, the export browser and Resemble Enhance (`fix-voice.mjs enhance` sets up its own gitignored `tools/.venv-enhance` the first time; the tool that needs one
 says how to get it).
