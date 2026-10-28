@@ -17,7 +17,8 @@ import { hear, vocabulary } from './lib/transcribe.mjs';
 const HELP = `edit-video.mjs — an ad's edit document (outputs/<ad>/edit.json)
 
   check    <edit.json>                            summary + problems (missing files, black: no picture on any track,
-                                                  a cut into someone's sound, a sound effect left marking no move or text);
+                                                  a cut into someone's sound, a sound effect left marking no move or text,
+                                                  text or a box outside the 4:5 safe zone);
                                                   export refuses black unless --allow-black
   place    <edit.json> --shots <shots.json> [--track Video] [--scene 0.25] [--max-rate 1] [--sfx <wav>]
                                                   shots on their lines: shots.json = {"clips":[{"file",
@@ -155,6 +156,18 @@ function orphanSfx(doc) {
     .flatMap((tr) => tr.clips.filter((c) => (endOf(c) ?? Infinity) - (c.at ?? 0) < 3 && !marks.some((t) => t >= (c.at ?? 0) - 0.15 && t <= (c.at ?? 0) + 0.6)));
 }
 
+// On a 9:16 frame, text, boxes and boxed images (centered on x/y) reaching outside the 4:5 crop (y 285–1635 on
+// 1920), which 4:5 feeds cut off. Text is checked at its y only.
+function outsideSafe(doc) {
+  const [W, H] = doc.size || [1080, 1920];
+  if (H / W < 1.7) return [];
+  const top = (H - (W * 5) / 4) / 2, bottom = H - top, at = (v) => (keyed(v) ? v.map(([, y]) => y) : [v]);
+  return (doc.tracks || []).filter((tr) => !tr.hidden).flatMap((tr) => (tr.clips || [])
+    .filter((c) => c.y != null && (['text', 'captions', 'rect'].includes(c.type) || (c.type === 'image' && c.h != null)))
+    .filter((c) => { const h = keyed(c.h) ? Math.max(...c.h.map(([, v]) => v)) : c.h || 0; return at(c.y).some((y) => y - h / 2 < top || y + h / 2 > bottom); })
+    .map((c) => `${tr.name}: ${c.name || c.type} at ${round(c.at ?? 0)}s reaches outside the 4:5 safe zone (y ${round(top)}–${round(bottom)})`));
+}
+
 // Cuts that land in someone's speech: a video or voice clip starting or ending inside sound that runs into their
 // speech (within 24 dB of its level) without a pause (30 dB down): a word cut in two, a soft ending clipped.
 function cutsIntoSpeech(doc, dir) {
@@ -196,7 +209,7 @@ function check(p) {
     });
   }
   for (const [a, b] of blackGaps(doc)) problems.push(`${round(b - a)}s of black at ${round(a)}s`);
-  problems.push(...cutsIntoSpeech(doc, dir));
+  problems.push(...cutsIntoSpeech(doc, dir), ...outsideSafe(doc));
   for (const c of orphanSfx(doc)) problems.push(`sound effect "${c.name || c.src}" at ${round(c.at ?? 0)}s marks no move or text: move it with what it marked, or remove it`);
   console.log(`${(doc.size || [1080, 1920]).join('x')} @ ${doc.fps || 30} fps · ${round(doc.duration ?? end)}s`);
   for (const l of lines) console.log('  ' + l);

@@ -30,7 +30,9 @@ Every file here — skills, docs, code, comments — is as short and plain as it
   check the page, running the user's instance with `--dev` (hot reload) while you change it; never
   start a second one.
 - Learnings go into ADPK (a skill, a tool or this file), or for one brand into its memory
-  (**save-brand-memory**), never an agent's private memory.
+  (**save-brand-memory**), never an agent's private memory. When an ad is done, tell the user what
+  its revisions taught as the reasoning behind each call (what to do when, and why), not the
+  specific fix, and fold each into the skill or tool that owns it.
   Off the maintainer's machine, propose ADPK changes as a PR (`gh pr create`).
 
 ## How you reply

@@ -20,7 +20,8 @@ Run it as a background command and read the address it prints; if Studio is alre
 prints that address and exits, so it never starts a second one. Then open the address for the user
 in the agent app's in-app browser whenever it has one, bringing the pane up if it's hidden; only
 without one, `open <url>` (`start <url>` on Windows). For an ad, open its own page by ID
-(`/<Workspace>/<Brand>/workflow/<ID>`, which survives a folder rename), not the list.
+(`/<Workspace>/<Brand>/workflow/<ID>`, which survives a folder rename), not the list. Never wait on a
+browser that doesn't answer: after one timeout, stop using it and check from the shell (`curl` the page and its API).
 Deps install via `tools/setup.sh` / `setup.ps1` (or `npm install --prefix studio` once).
 
 When you run inside Studio's chat (the Mac app, or `/app` in a browser), Studio is already open

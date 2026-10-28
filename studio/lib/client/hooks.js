@@ -2,8 +2,45 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { apiBase, getJson } from './api.js';
 
-// Load /api/[ws]/[brand]/<kind>; reload on each `change` from the watch stream (updatedAt bumps then),
-// and once when the stream reconnects after a drop (a Studio restart), since changes in between were missed.
+// One watch stream per brand for the whole browser: an open stream holds one of the browser's 6 connections to
+// Studio, shared by every tab and pane. The tab holding the brand's lock streams and relays each event to the
+// others; when it closes, the next takes over. fn('change') on each change, fn('missed') when changes may have
+// been missed (the stream reconnected after a Studio restart, or a tab took over).
+const watches = new Map();
+function watchBrand(ws, brand, fn) {
+  const key = `studio-watch:${ws}/${brand}`;
+  let w = watches.get(key);
+  if (!w) {
+    const fns = new Set(), emit = (type) => fns.forEach((f) => f(type));
+    const bc = new BroadcastChannel(key), quit = new AbortController();
+    bc.onmessage = (e) => emit(e.data);
+    navigator.locks.request(key, { signal: quit.signal }, () => !quit.signal.aborted && new Promise((done) => {
+      const send = (type) => { emit(type); bc.postMessage(type); };
+      let es = null, timer = 0, dropped = false;
+      // The browser retries a dropped stream itself, but gives up for good on an error reply
+      // (Studio still starting); then reconnect by hand.
+      const connect = () => {
+        es = new EventSource(`${apiBase(ws, brand)}/watch`);
+        es.addEventListener('change', () => send('change'));
+        es.addEventListener('open', () => { if (dropped) { dropped = false; send('missed'); } });
+        es.addEventListener('error', () => {
+          dropped = true;
+          if (es.readyState === EventSource.CLOSED && !quit.signal.aborted) timer = setTimeout(connect, 2000);
+        });
+      };
+      connect();
+      send('missed');
+      quit.signal.addEventListener('abort', () => { clearTimeout(timer); es.close(); done(); });
+    })).catch(() => {}); // quit while waiting for the lock
+    w = { fns, stop: () => { quit.abort(); bc.close(); watches.delete(key); } };
+    watches.set(key, w);
+  }
+  w.fns.add(fn);
+  return () => { w.fns.delete(fn); if (!w.fns.size) w.stop(); };
+}
+
+// Load /api/[ws]/[brand]/<kind>; reload on each change in the brand (updatedAt bumps then), and once when
+// changes may have been missed.
 export function useBrandData(ws, brand, kind) {
   const [data, setData] = useState(null);
   const [error, setError] = useState(null);
@@ -17,22 +54,10 @@ export function useBrandData(ws, brand, kind) {
 
   const loadRef = useRef(load);
   loadRef.current = load;
-  useEffect(() => {
-    let es = null, timer = 0, dropped = false, dead = false;
-    // The browser retries a dropped stream itself, but gives up for good on an error reply
-    // (Studio still starting); then reconnect by hand.
-    const connect = () => {
-      es = new EventSource(`${apiBase(ws, brand)}/watch`);
-      es.addEventListener('change', () => loadRef.current().then(() => setUpdatedAt(Date.now())));
-      es.addEventListener('open', () => { if (dropped) { dropped = false; loadRef.current(); } });
-      es.addEventListener('error', () => {
-        dropped = true;
-        if (es.readyState === EventSource.CLOSED && !dead) timer = setTimeout(connect, 2000);
-      });
-    };
-    connect();
-    return () => { dead = true; clearTimeout(timer); es.close(); };
-  }, [ws, brand]);
+  useEffect(() => watchBrand(ws, brand, (type) => {
+    if (type === 'change') loadRef.current().then(() => setUpdatedAt(Date.now()));
+    else loadRef.current();
+  }), [ws, brand]);
 
   return { data, setData, error, load, updatedAt };
 }

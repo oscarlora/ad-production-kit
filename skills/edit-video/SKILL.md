@@ -110,7 +110,10 @@ change to V1's.
 - **Text** — hook, lists and end card as `text` / `rect` / `image` clips. Text overlays cut in, no entrance animation, unless the user asks. Everything sits where both
   feeds show it: inside the 4:5 crop (y 285–1635 on 1920) and above the Reels UI, which covers the
   bottom ~35% (so no text below y ~1250), with room to spare — about 90 px from every edge, text
-  blocks at most ~880 px wide — and clear of the face and the product. Captions stay centered
+  blocks at most ~880 px wide — and clear of the face and the product. When it won't all fit, the
+  safe zone wins, then the face and product, and size gives way: shrink a graphic before moving it
+  out (`check` flags anything outside the zone). No text repeats what other text on screen already
+  says. Captions stay centered
   in one spot; while the product is held they may shift only up or down, inside the safe zone, and
   overlap it when it can't be cleared. Other on-screen text replaces the captions for its whole
   sentence (**caption-video**, Hook). When the speaker lists things, stack them: one line per item with an
