@@ -214,7 +214,11 @@ const EXPORTED = any(ROOT_VIDEO, under('final', 'video')); // edit-video exports
 // Each step lists the files that evidence it (and optionally record fields); optional steps show only when they have files.
 // A step with a section shows those sections of the newest root .md (the brief); pick narrows them to matching blocks, cols to matching table columns.
 // Every ad's brief opens with its concept section (block format: open-studio).
-const CONCEPT = { key: 'concept', label: 'Concept', section: /^concept/i, pick: /^(\*\*(Product|Persona|Angle|Message|For|Format|Concept Overview|Reference)(:|\*\*$)|!\[)/ };
+const CONCEPT = { key: 'concept', label: 'Concept', section: /^concept/i, pick: /^(\*\*(Product|Persona|Angle|Message|For|Format|Style|Cast|Concept Overview|Reference)(:|\*\*$))/ };
+const SCRIPT_TABLE = { section: /^(lines to camera|hooks|script)/i, pick: /^\|/ };
+// Whether a brief has a step's section (with a block it picks), and the view that shows it.
+const hasSection = (blocks, def) => !!def.section && inSections(blocks, def.section).some((on, i) => on && (!def.pick || def.pick.test(blocks[i].src)));
+const viewOf = (def) => ({ only: def.section.source, pick: def.pick?.source, cols: def.cols?.source });
 const FAMILIES = {
   image: [ // make-image-ad
     { key: 'prompt', label: 'Prompt', fields: (rec) => (rec?.generation?.prompt ? [['prompt', displayText(rec.generation.prompt)]] : []) },
@@ -240,7 +244,7 @@ const FAMILIES = {
   ugc: [ // creator-filmed: write-copy's brief template, built section by section, then the edit
     { key: 'profile', label: 'Profile', optional: true, files: (f) => f.rel === 'references/profile.md' }, // an ad for a known creator: their profile, reels as media blocks
     CONCEPT,
-    { key: 'script', label: 'Script', section: /^(lines to camera|hooks|script)/i, pick: /^\|/, cols: /^(scene|line)$/i },
+    { key: 'script', label: 'Script', ...SCRIPT_TABLE, cols: /^(scene|line|talking points)$/i },
     { key: 'storyboard', label: 'Storyboard', section: /^(lines to camera|slides|b-?roll|visuals)/i, pick: /^\|/, files: under('slides', 'image') },
     { key: 'brief', label: 'Brief', files: any(ROOT_MD, (f) => /^analysis\.md$/i.test(f.rel)) },
     { key: 'footage', label: 'Footage' }, // footage.json, filled in adWorkflow
@@ -282,7 +286,7 @@ function genericSteps(brandDirAbs, family, files, rec) {
   const blocks = brief ? parseDoc(readText(brandDirAbs, brief.p)).blocks : [];
   const steps = [];
   for (const def of defs) {
-    const sec = !!def.section && inSections(blocks, def.section).some((on, i) => on && (!def.pick || def.pick.test(blocks[i].src)));
+    const sec = hasSection(blocks, def);
     const own = [...(sec ? [brief] : []), ...(def.files ? files.filter(def.files) : [])];
     const fields = own.length ? [] : (def.fields?.(rec) || []).filter(([, v]) => v);
     if (def.optional && !own.length) continue;
@@ -290,32 +294,48 @@ function genericSteps(brandDirAbs, family, files, rec) {
       key: def.key,
       label: def.label,
       done: !!(own.length || fields.length || def.done?.(rec)),
-      panel: { ...(fields.length ? { fields } : {}), ...(own.length ? { files: present(own, files) } : {}), ...(sec ? { view: { only: def.section.source, pick: def.pick?.source, cols: def.cols?.source } } : {}) },
+      panel: { ...(fields.length ? { fields } : {}), ...(own.length ? { files: present(own, files) } : {}), ...(sec ? { view: viewOf(def) } : {}) },
     });
   }
   return steps;
 }
 
-// make-ai-animation: Concept · Script · Voices · Storyboard · Sheets · Frames · Clips · Edit.
-function animationSteps(brandDirAbs, folder, files) {
-  const sbFile = files.find((f) => f.rel === 'storyboard.md');
-  const sb = sbFile ? parseStoryboard(readText(brandDirAbs, sbFile.p)) : { header: '', blocking: '', rows: [] };
+// make-ai-animation: Concept · Script · Voice · Sheets · Frames · Clips · Edit. storyboard.md holds the concept, the
+// notes and the shot table (its STORYBOARD section; Script shows its #, Line and What we see); voice.json the picked take.
+// make-ai-slides: Concept · Script · Voices · Storyboard · Sheets · Frames · Clips · Edit, the script in script.md.
+const SHOTS = { section: /^(storyboard|shots)$/i, pick: /^\|/, cols: /^(#|line|what we see)$/i };
+function animationSteps(brandDirAbs, folder, files, slides) {
+  const byRel = new Map(files.map((f) => [f.rel, f]));
+  const doc = (rel) => { const f = byRel.get(rel); return f ? { f, blocks: parseDoc(readText(brandDirAbs, f.p)).blocks } : null; };
+  const sbDoc = doc('storyboard.md'), scriptDoc = doc('script.md');
+  const sb = sbDoc ? parseStoryboard(readText(brandDirAbs, sbDoc.f.p)) : { header: '', blocking: '', rows: [] };
   const rows = shotsWithMedia(brandDirAbs, folder, sb, files);
   const shots = rows.filter((r) => r.n != null);
   const framed = shots.filter((s) => s.frame).length;
   const clipped = shots.filter((s) => s.clips.length).length;
-  const script = files.find((f) => f.rel === 'script.md');
-  const sheets = files.filter(under('sheets', 'image', 'txt'));
-  const voices = files.filter(any((f) => f.rel === 'voices.md', under('audio', 'audio'), under('voice', 'audio')));
+  // A doc's sections for a step (else the whole doc).
+  const docPanel = (d, def) => ({ files: present([d.f], files), ...(hasSection(d.blocks, def) ? { view: viewOf(def) } : {}) });
+  const conceptDoc = [sbDoc, scriptDoc].find((d) => d && hasSection(d.blocks, CONCEPT));
+  const takes = files.filter(any(under('audio', 'audio'), under('voice', 'audio')));
+  const picked = readJson(join(brandDirAbs, 'outputs', folder, 'voice.json'), {})?.take;
+  const voicesMd = files.filter((f) => f.rel === 'voices.md');
+  const sheets = files.filter(under('sheets', 'image')).map((f) => ({ name: f.rel.slice(7), p: f.p, v: f.v, gen: readGen(brandDirAbs, byRel, f) }));
   const edit = files.filter(EXPORTED);
   const progress = (n) => (shots.length ? `${n}/${shots.length}` : '');
+  const shotCount = shots.length ? `${shots.length} shot${shots.length === 1 ? '' : 's'}` : '';
   const steps = [
-    { key: 'concept', label: 'Concept', done: !!(sb.header || script), panel: sb.header ? { md: sb.header } : {} },
-    { key: 'script', label: 'Script', done: !!(script || shots.some((s) => s.lines.length)),
-      panel: script ? { files: present([script], files) } : shots.length ? { note: 'The lines are on the storyboard cards.' } : {} },
-    { key: 'voices', label: 'Voices', done: voices.length > 0, panel: voices.length ? { files: present(voices, files) } : {} },
-    { key: 'storyboard', label: 'Storyboard', done: shots.length > 0, count: shots.length ? `${shots.length} shot${shots.length === 1 ? '' : 's'}` : '', panel: shots.length ? { storyboard: true } : {} },
-    { key: 'sheets', label: 'Sheets', done: sheets.some((f) => f.type === 'image'), panel: sheets.length ? { files: present(sheets, files) } : {} },
+    { key: 'concept', label: 'Concept', done: !!(conceptDoc || sb.header || scriptDoc), panel: conceptDoc ? docPanel(conceptDoc, CONCEPT) : sb.header ? { md: sb.header } : {} },
+    ...(slides ? [
+      { key: 'script', label: 'Script', done: !!(scriptDoc || shots.some((s) => s.lines.length)), panel: scriptDoc ? docPanel(scriptDoc, SCRIPT_TABLE) : {} },
+      { key: 'voices', label: 'Voices', done: takes.length > 0, panel: takes.length ? { files: present(takes, files) } : {} },
+      { key: 'storyboard', label: 'Storyboard', done: shots.length > 0, count: shotCount, panel: shots.length ? { storyboard: true } : {} },
+    ] : [
+      { key: 'script', label: 'Script', done: shots.length > 0, count: shotCount, panel: sbDoc && shots.length ? docPanel(sbDoc, SHOTS) : {} },
+      // Narrated: done once a take is picked; dialogue: once the voice blocks are written (the clips make the voices).
+      { key: 'voices', label: 'Voice', done: !!picked || (voicesMd.length > 0 && !takes.length), count: takes.length && !picked ? `${takes.length} to pick from` : '',
+        panel: { ...(voicesMd.length ? { files: present(voicesMd, files) } : {}), ...(takes.length ? { voices: takes.map((f) => ({ name: f.rel, p: f.p, v: f.v, picked: f.rel === picked })) } : {}) } },
+    ]),
+    { key: 'sheets', label: 'Sheets', done: sheets.length > 0, count: sheets.length ? String(sheets.length) : '', panel: sheets.length ? { sheets } : {} },
     { key: 'frames', label: 'Frames', done: shots.length > 0 && framed === shots.length, count: progress(framed), panel: shots.length ? { storyboard: true } : {} },
     { key: 'clips', label: 'Clips', done: shots.length > 0 && clipped === shots.length, count: progress(clipped), panel: shots.length ? { storyboard: true } : {} },
     { key: 'edit', label: 'Edit', done: edit.length > 0, panel: edit.length ? { files: present(edit, files) } : {} },
@@ -336,7 +356,7 @@ function adWorkflow(brandDirAbs, folder) {
   const rec = readRecord(brandDirAbs, head.id);
   const family = familyOf(head.format);
   const { steps, storyboard = null } = family === 'animation'
-    ? animationSteps(brandDirAbs, folder, files)
+    ? animationSteps(brandDirAbs, folder, files, /slides/i.test(head.format))
     : { steps: genericSteps(brandDirAbs, family, files, rec) };
   const footage = steps.some((s) => s.key === 'footage') ? footageView(brandDirAbs, files.filter(ROOT_MD).pop(), files) : null;
   if (footage) {

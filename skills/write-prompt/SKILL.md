@@ -17,7 +17,7 @@ Decide everything; never leave a choice to the model (no "water or can").
   the label. In a stylized world (stop-motion, 3D), the real product photo still sets the label: ask
   only for the scene's light and material on it. A generated product sheet is never a reference: the
   video workflows crop the real product from a store photo into the ad's `sheets/product.png`.
-- **A product held in a hand needs an in-hand reference.** Add a photo of it held in a hand (**search-media**) and tell the model to match that product-to-hand size; the packshot alone gets the scale wrong.
+- **A product held in a hand needs an in-hand reference.** Add a photo of it held in a hand (**search-media**), cropped to the hand and product (a face in it takes over the character), and tell the model to match that product-to-hand size; the packshot alone gets the scale wrong.
 - **Each generation is stateless.** Describe the final image, never an edit of a previous attempt (no "don't do X" caveats about a prior output). Hard requirements (element counts, "natural undistorted proportions", single image) go in the prompt's constraints. To fix an ad, rebuild the whole prompt fresh; never add product-appearance or dimension language to force a fix.
 - **Revisions regenerate — never edit a previous render.** For any revision (ad, frame, clip), fold the change into the prompt that made it (an ad's is in its record) and generate fresh with the original refs. No image-to-image edit pass on a prior render, and don't ask edit-vs-regenerate (image edits stay fine for preparing base photos, or when the user asks). When recasting real footage, the base is always **the original source frame**, with a short prompt naming only the change. To keep a person across shots, add a **face-only crop** (head and hair) from their approved frame and say "use image 2 only for the face and hair, nothing else". Never feed a whole generated frame back as a reference: each pass gets crisper until it reads fake.
 - **References:** the tool hosts local files itself (signed R2 URLs, or kie's file hosting without R2); there is nothing to upload or delete. Pass an existing HTTPS URL directly when the reference isn't a cataloged brand asset.
@@ -37,8 +37,9 @@ Decide everything; never leave a choice to the model (no "water or can").
 - **Name each subject one way, everywhere.** With several people or objects in a shot, identify each
   by position and look, in the same words every time. A label must fit only its subject: calling an
   off-screen speaker "GREEN" while a dancer in green is in frame points at the dancer.
-- **Name each reference by number and say who is in frame.** "Linda from reference image 1, the
-  reception from reference image 2." List exactly who is in the shot; otherwise the model fills it
+- **Name each reference by number, in the order attached, and say who is in frame.** The prompt
+  introduces image 1 first, then 2, and so on ("Linda from reference image 1, the reception from
+  reference image 2"); the product goes first in both. List exactly who is in the shot; otherwise the model fills it
   with people from the sheets.
 - **No mirrors.** The model duplicates people and the reflection doesn't match.
 - **Keep bodies neutral for content filters.** Anatomy and pose words ("from the chest up", "leaning

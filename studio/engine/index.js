@@ -9,9 +9,11 @@ import { motionKit } from './motion.js';
 
 // canvas: where frames are drawn (its width sets the scale). url(src): fetchable URL of a doc path.
 // load(doc, fxUrl): fxUrl is the URL of the doc's fx module (custom layers, transitions, animations), if any.
-export async function createEngine({ canvas, url }) {
+// light (Studio's preview): sound decoded mono at 24 kHz, a quarter of the memory; exports keep 48 kHz stereo.
+export async function createEngine({ canvas, url, light = false }) {
   const ctx = canvas.getContext('2d');
-  const media = new Media(url);
+  const media = new Media(url, { mono: light });
+  const decodeAt = () => new OfflineAudioContext(2, 1, light ? 24000 : 48000);
   let grader = null;
   let doc = null, env = null, sounds = null, gain = 1, audioKey = '';
   let chain = Promise.resolve();
@@ -26,17 +28,17 @@ export async function createEngine({ canvas, url }) {
     env?.motion.dispose();
     env = { W: d.W, H: d.H, fps: d.fps, k: canvas.width / d.W, cw: canvas.width, ch: canvas.height, grader, fx, scratch: {}, motion: motionKit() };
     const key = JSON.stringify([d.loudness, d.tracks.map((tr) => [tr.mute, tr.volume, tr.clips.map((c) => [c.type, c.src && url(c.src), c.at, c.end, c.in, c.rate, c.mute, c.volume, c.fadeIn, c.fadeOut, c.loop])])]);
-    if (key !== audioKey) { sounds = null; audioKey = key; audio(new OfflineAudioContext(2, 1, 48000)).catch(() => {}); } // decode ahead of play
+    if (key !== audioKey) { sounds = null; audioKey = key; audio().catch(() => {}); } // decode ahead of play
     return d;
   }
 
   // Decoded sounds and the loudness gain, once per change to what is heard.
   let pending = null;
-  function audio(actx) {
+  function audio() {
     if (sounds) return Promise.resolve(sounds);
     const key = audioKey;
     pending = pending?.key === key ? pending : { key, p: (async () => {
-      const s = await soundClips(doc, media, actx);
+      const s = await soundClips(doc, media, decodeAt());
       const g = await normalizeGain(doc, s);
       if (key === audioKey) { gain = g; if (!s.incomplete) sounds = s; }
       if (s.incomplete) pending = null; // a file failed to load: try again on the next play
@@ -63,7 +65,7 @@ export async function createEngine({ canvas, url }) {
 
   // Start the mix at timeline t on a live AudioContext: { at (the context time it starts), stop }.
   async function play(actx, t) {
-    const s = await audio(actx);
+    const s = await audio();
     const at = actx.currentTime + 0.05;
     const nodes = schedule(actx, doc, s, { from: t, when: at, gain });
     return { at, stop: () => nodes.forEach((n) => { try { n.stop(); } catch {} }) };
@@ -78,7 +80,7 @@ export async function createEngine({ canvas, url }) {
     load, render, play, resize,
     get doc() { return doc; },
     errors: media.errors,
-    async mix() { await audio(new OfflineAudioContext(2, 1, 48000)); return limit(await mixdown(doc, sounds, gain)); },
+    async mix() { await audio(); return limit(await mixdown(doc, sounds, gain)); },
     close: () => { env?.motion.dispose(); return media.close(); },
   };
 }

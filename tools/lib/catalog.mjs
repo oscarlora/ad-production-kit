@@ -9,8 +9,8 @@
 import { createHash } from 'node:crypto';
 import { spawn, spawnSync } from 'node:child_process';
 import { readFileSync, readdirSync, existsSync, mkdirSync, createReadStream, createWriteStream, writeFileSync, openSync, readSync, closeSync, rmSync, renameSync, statSync } from 'node:fs';
-import { homedir, hostname, tmpdir } from 'node:os';
-import { join, resolve, basename, extname, delimiter, dirname } from 'node:path';
+import { homedir, hostname, setPriority, tmpdir } from 'node:os';
+import { join, resolve, basename, extname, delimiter, dirname, relative } from 'node:path';
 import { Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import { fileURLToPath } from 'node:url';
@@ -61,11 +61,13 @@ export function run(bin, args, { allowFail = false, binary = false, cwd } = {}) 
   if (r.status !== 0 && !allowFail) throw new Error(`${bin} ${args.join(' ')} failed: ${r.stderr || r.error}`);
   return r;
 }
-// run() without blocking the event loop: { status, stdout, stderr }.
-export function runAsync(bin, args, { allowFail = false, cwd } = {}) {
+// run() without blocking the event loop: { status, stdout, stderr }. `low` runs it at the lowest CPU priority
+// (nice 19 / Windows idle class), so the computer stays usable while it encodes.
+export function runAsync(bin, args, { allowFail = false, cwd, low = false } = {}) {
   noteFfmpeg(bin);
   return new Promise((res, rej) => {
     const p = spawn(findBin(bin) || bin, args, { cwd, stdio: ['ignore', 'pipe', 'pipe'] });
+    if (low) try { setPriority(p.pid, 19); } catch {}
     let stdout = '', stderr = '';
     p.stdout.on('data', (d) => { stdout += d; });
     p.stderr.on('data', (d) => { stderr = (stderr + d).slice(-20000); });
@@ -73,12 +75,20 @@ export function runAsync(bin, args, { allowFail = false, cwd } = {}) {
     p.on('close', (status) => (status !== 0 && !allowFail ? rej(new Error(`${bin} ${args.join(' ')} failed: ${stderr}`)) : res({ status, stdout, stderr })));
   });
 }
-// A file made from `src` once per version of it (path, mtime, size) and `key`, kept in <OS temp>/<cache>:
-// make(tmp) writes it to tmp, renamed into place so concurrent requests never see half a file. → its path.
-export async function cachedFile(src, { cache, key = '', ext }, make) {
+// A file made from `src` once per version of it (path, mtime, size) and `key`, kept in <OS temp>/<cache>, or with
+// `beside` in a hidden .previews folder next to src (survives restarts; sync skips dot folders): make(tmp) writes it
+// to tmp, renamed into place so concurrent requests never see half a file. → its path.
+export function cachedPath(src, { cache, key = '', ext, beside = false }) {
   const st = statSync(src);
-  const out = join(tmpdir(), cache, `${createHash('sha1').update(`${src}|${st.mtimeMs}|${st.size}|${key}`).digest('hex')}.${ext}`);
-  if (existsSync(out)) return out;
+  return beside
+    ? join(dirname(src), '.previews', `${basename(src)}.${key}.${ext}`)
+    : join(tmpdir(), cache, `${createHash('sha1').update(`${src}|${st.mtimeMs}|${st.size}|${key}`).digest('hex')}.${ext}`);
+}
+// Whether cachedFile has already made it.
+export const isCached = (src, opts) => { const out = cachedPath(src, opts); return existsSync(out) && (!opts.beside || statSync(out).mtimeMs >= statSync(src).mtimeMs); };
+export async function cachedFile(src, { cache, key = '', ext, beside = false }, make) {
+  const out = cachedPath(src, { cache, key, ext, beside });
+  if (isCached(src, { cache, key, ext, beside })) return out;
   mkdirSync(dirname(out), { recursive: true });
   const tmp = `${out.slice(0, -ext.length - 1)}.${process.pid}.${Date.now()}.${ext}`;
   await make(tmp);
@@ -92,6 +102,24 @@ export function imageFitCmd(file, px, out) {
   if (have('sips')) return ['sips', ['-s', 'format', extOf(out) === 'png' ? 'png' : 'jpeg', '-Z', String(px), file, '--out', out]];
   const fit = `scale=w='min(iw,${px})':h='min(ih,${px})':force_original_aspect_ratio=decrease:force_divisible_by=2`;
   return ['ffmpeg', ['-y', '-v', 'error', '-i', file, '-frames:v', '1', '-vf', fit, '-q:v', '3', out]];
+}
+// Whether ffmpeg can decode and encode H.264 on the Mac's media engine (VideoToolbox), which spares the CPU.
+let vt;
+export const videoToolbox = () => (vt ??= process.platform === 'darwin' && /h264_videotoolbox/.test(run('ffmpeg', ['-hide_banner', '-encoders'], { allowFail: true }).stdout || ''));
+// Studio's editor plays every video from a light copy this wide (Editor.js PREVIEW_W), kept beside it in .previews.
+export const PREVIEW_PX = 720;
+export const videoPreviewOpts = (px = PREVIEW_PX) => ({ cache: 'ad-production-kit-previews', key: px, ext: 'mp4', beside: true });
+// Make Studio's preview files for these edits, files or folders in a detached background process
+// (`edit-video.mjs previews`), so playback never waits on them.
+export const warmPreviews = (targets) => spawn(process.execPath, [join(REPO_ROOT, 'tools', 'edit-video.mjs'), 'previews', ...targets], { detached: true, stdio: 'ignore' }).unref();
+// The command that writes a light preview copy of a video (H.264 within px wide, a keyframe every half second
+// for quick seeking, AAC sound), never upscaled: [bin, args] for run()/runAsync(). On VideoToolbox when there is
+// one, else libx264 on 4 threads.
+export function videoPreviewCmd(file, px, out) {
+  const [dec, enc] = videoToolbox() ? [['-hwaccel', 'videotoolbox'], ['-c:v', 'h264_videotoolbox', '-q:v', '55']]
+    : [['-threads', '4'], ['-c:v', 'libx264', '-threads', '4', '-preset', 'veryfast', '-crf', '24']];
+  return ['ffmpeg', ['-y', '-v', 'error', ...dec, '-i', file, '-vf', `scale='min(iw,${px})':-2`, ...enc,
+    '-g', '15', '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-b:a', '128k', '-movflags', '+faststart', out]];
 }
 // Note on an ad's record (outputs/json/<id>.json, beside the upload spec) where it was uploaded: sentTo[dest] = url.
 // The id is the leading number of the spec's name (the ad folder), else of its _upload_<id>.json file name.
@@ -201,6 +229,23 @@ export const decodeHtml = (s) => String(s).replace(/&(#x[\da-f]+|#\d+|[a-z]+);/g
 // session. Studio's own edits mark it "studio", which any session may take.
 export const EDITING = '.editing.json';
 export const sessionId = () => process.env.CLAUDE_CODE_SESSION_ID || process.env.ADPK_SESSION || hostname();
+// After a media file is renamed: every edit document in every workspace that pointed at the old file points at
+// the new one (the shared library is used across brands). Returns how many documents changed.
+export function relinkEdits(oldAbs, newAbs) {
+  const sub = (d) => { try { return readdirSync(d, { withFileTypes: true }).filter((e) => e.isDirectory()).map((e) => join(d, e.name)); } catch { return []; } };
+  let n = 0;
+  for (const ws of sub(join(REPO_ROOT, 'workspaces'))) for (const brand of sub(ws)) for (const ad of sub(join(brand, 'outputs'))) {
+    for (const f of readdirSync(ad).filter((x) => /^edit.*\.json$/.test(x))) {
+      const p = join(ad, f);
+      let doc; try { doc = JSON.parse(readFileSync(p, 'utf8')); } catch { continue; }
+      let hit = false;
+      for (const tr of doc.tracks || []) for (const c of tr.clips || []) if (c.src && resolve(ad, c.src) === oldAbs) { c.src = relative(ad, newAbs); hit = true; }
+      if (hit) { writeFileSync(p, JSON.stringify(doc, null, 1) + '\n'); n++; }
+    }
+  }
+  return n;
+}
+
 export function readEditing(adDir) {
   try { return JSON.parse(readFileSync(join(adDir, EDITING), 'utf8')); } catch { return null; }
 }

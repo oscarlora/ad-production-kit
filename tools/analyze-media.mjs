@@ -2,17 +2,17 @@
 // analyze-media.mjs — analyze each cataloged file with ANALYSIS_MODEL (the analysis, products, people,
 // transcript), fill its record, and rename the original to <id>_<descriptor>.<ext>.
 // One call per file: an image; a video's proxy with its sound (its track gets its own sound call past
-// LONG s, or when the speech looped); an audio file's track. Local Whisper then replaces the transcript's words and timings (lib/transcribe.mjs, alignWords).
+// LONG s, or when the speech looped); an audio file, whole (past LONG s its speech is transcribed apart). Local Whisper then replaces the transcript's words and timings (lib/transcribe.mjs, alignWords).
 // Reads inputs/products.json and _catalog/people.json.
 import { existsSync, renameSync, rmSync, statSync } from 'node:fs';
 import { join, extname } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { catalogPaths, readRecords, readRecord, mergeRecord, readRoster, parseArgs, mediaDirFrom, inferBrand, slugify, ffprobeJson, round, run, have, usage } from './lib/catalog.mjs';
+import { catalogPaths, readRecords, readRecord, mergeRecord, readRoster, parseArgs, mediaDirFrom, inferBrand, slugify, ffprobeJson, round, run, have, usage, relinkEdits } from './lib/catalog.mjs';
 import { videoPass, videoMeta, workDir, heavy } from './lib/media-probe.mjs';
 import { requireKeys, filePart, generateJSON, spendText, ANALYSIS_MODEL, INLINE_MAX } from './lib/analyze.mjs';
 import { buildPrompt, buildSchema } from './lib/analysis-prompt.mjs';
 import { fetchMissing } from './lib/r2.mjs';
-import { audioTrack, transcribeAudio, toTranscript, vocabulary, alignWords, loops, LONG } from './lib/transcribe.mjs';
+import { audioTrack, describeAudio, transcribeAudio, toTranscript, vocabulary, alignWords, loops, LONG } from './lib/transcribe.mjs';
 
 const HELP = `analyze-media.mjs — describe cataloged media with ${ANALYSIS_MODEL} on kie.ai and fill their records
 (key: <WS>_KIE_API_KEY; optional fallback when kie fails: <WS>_AI_GATEWAY_API_KEY)
@@ -45,7 +45,7 @@ function mergeScenes(detected, got, duration) {
   return cleanScenes(got.map((g) => ({ start: g.start, end: g.end, description: g.description })), duration).sort((a, b) => a.start - b.start);
 }
 
-const soundOf = (track, snd) => (!track ? 'No audio track.' : track.silent ? 'Silent — no audible sound.' : snd.sound);
+const soundOf = (track, snd) => (!track ? 'No audio track.' : track.silent ? 'Silent — no audible sound.' : joinSections(snd.sections || []));
 const timed = (scenes) => scenes.map((s) => `[${s.start}–${s.end}s] ${s.description}`).join('\n\n');
 
 async function analyzeOne({ media, id, keys, roster, brand, vocab }) {
@@ -79,7 +79,7 @@ async function analyzeOne({ media, id, keys, roster, brand, vocab }) {
       patch.scenes = mergeScenes(detected, pic.scenes || [], duration);
       if (sound) snd = long || loops(pic.sentences) ? await transcribeAudio(keys, track, { brand, vocab }) : { ...pic, model: picModel };
     } else if (track && !track.silent) {
-      snd = await transcribeAudio(keys, track, { brand, vocab, standalone: true });
+      snd = await describeAudio(keys, track, { brand, vocab });
     }
     if (pic?.unreadable) throw new Error('Gemini could not decode the file');
     // The model that actually answered (the Gateway fallback when kie failed).
@@ -103,10 +103,13 @@ async function analyzeOne({ media, id, keys, roster, brand, vocab }) {
 
     const descriptor = (type === 'audio' ? snd?.descriptor || 'silent audio' : pic.descriptor);
     const name = `${id}_${slugify(descriptor)}${extname(rec.file.name).toLowerCase()}`;
-    if (name !== rec.file.name && existsSync(original) && !existsSync(join(media, name))) { renameSync(original, join(media, name)); patch.file = { name }; }
+    if (name !== rec.file.name && existsSync(original) && !existsSync(join(media, name))) {
+      renameSync(original, join(media, name)); patch.file = { name };
+      relinkEdits(original, join(media, name));
+    }
 
     mergeRecord(paths, patch);
-    return { id, type, name: patch.file?.name || rec.file.name };
+    return { id, type, name: patch.file?.name || rec.file.name, model: patch.analyzed_by.model };
   } finally {
     for (const d of temps) rmSync(d, { recursive: true, force: true });
   }
@@ -126,7 +129,7 @@ export async function analyzeMany({ media, ids, all, force, concurrency = 4 }) {
   const worker = async () => {
     while (i < queue.length) {
       const id = queue[i++];
-      try { const r = await analyzeOne({ media, id, keys, roster, brand, vocab }); done.push(r); console.log(`analyzed ${id} → ${r.name}`); }
+      try { const r = await analyzeOne({ media, id, keys, roster, brand, vocab }); done.push(r); console.log(`analyzed ${id} → ${r.name} (${r.model})`); }
       catch (e) { failed.push({ id, error: e.message }); console.log(`FAILED ${id}: ${e.message}`); }
     }
   };

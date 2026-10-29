@@ -79,7 +79,7 @@ function Location({ ws, brand, rec, actions }) {
           : <><span className="param__link" title={where.url}>{where.url}</span>{where.expires ? <span className="param__hint">Expires {Math.round(where.expires / 86400)} days after opening.</span> : null}</>}
         <span className="param__actions">
           {!where.local && <button type="button" className="btn btn--mini" onClick={() => copy(where.url)}><IcLink />{copied ? 'Copied' : 'Copy link'}</button>}
-          <button type="button" className="btn btn--mini" onClick={() => actions.download(rec)}><IcDl />Download</button>
+          <button type="button" className="btn btn--mini" onClick={() => actions.download([rec])}><IcDl />Download</button>
         </span>
       </Param>
       {where.onDevice && (

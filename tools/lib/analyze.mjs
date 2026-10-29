@@ -34,11 +34,13 @@ export function requireKeys(anyPath) {
 
 export const filePart = (path, mime) => ({ inline_data: { mime_type: mime, data: readFileSync(path).toString('base64') } });
 
-// kie answers errors as HTTP 200 + { code, msg }; these codes and network errors are worth a retry.
+// kie answers errors as HTTP 200 + { code, msg }; these codes, network errors and malformed JSON
+// (kie doesn't enforce the schema) are worth a retry; a reply cut off at the output limit is not.
 const RETRY = new Set([429, 455, 500, 501, 502, 503, 504]);
 const fail = (msg, retry) => Object.assign(new Error(msg), { retry });
 
-// One streamed call → the reply text. The stream's last data chunk carries credits_consumed.
+// One streamed call → { text, used } (output tokens, thinking included). The stream's last data chunk
+// carries usageMetadata and credits_consumed.
 async function kieCall(key, body) {
   let res, raw;
   try {
@@ -50,14 +52,15 @@ async function kieCall(key, body) {
   } catch (e) { throw fail(`kie: ${e.cause?.message || e.message}`, true); }
   if (!res.ok) throw fail(`kie: HTTP ${res.status} ${raw.slice(0, 200)}`, res.status === 429 || res.status >= 500);
   const chunks = raw.trimStart().startsWith('{') ? [raw] : raw.split('\n').filter((l) => l.startsWith('data:')).map((l) => l.slice(5).trim()).filter((l) => l && l !== '[DONE]');
-  let text = '';
+  let text = '', used = 0;
   for (const c of chunks) {
     let j; try { j = JSON.parse(c); } catch { throw fail(`kie: unreadable stream chunk ${c.slice(0, 120)}`, true); }
     if (j.code && j.code !== 200) throw fail(`kie: code ${j.code}: ${j.msg}`, RETRY.has(j.code));
     for (const p of j.candidates?.[0]?.content?.parts || []) if (!p.thought && p.text) text += p.text;
+    if (j.usageMetadata) used = (j.usageMetadata.thinkingTokenCount || 0) + (j.usageMetadata.candidatesTokenCount || 0);
     if (j.credits_consumed) spend.credits += +j.credits_consumed;
   }
-  return text;
+  return { text, used };
 }
 
 async function viaGateway(key, { parts, schema, temperature, maxOutputTokens }) {
@@ -71,8 +74,9 @@ async function viaGateway(key, { parts, schema, temperature, maxOutputTokens }) 
   return output;
 }
 
-// → { out, model }. A few retries with backoff on kie, then the Gateway when the workspace has a key.
-// An unparseable reply throws "unparseable JSON".
+// → { out, model }. Up to TRIES calls on kie with a short backoff, then the Gateway when the workspace
+// has a key. An unparseable reply throws "unparseable JSON".
+const TRIES = 4;
 export async function generateJSON(keys, { parts, schema, temperature = 0, maxOutputTokens }) {
   const body = {
     stream: true,
@@ -81,13 +85,14 @@ export async function generateJSON(keys, { parts, schema, temperature = 0, maxOu
   };
   for (let attempt = 1; ; attempt++) {
     try {
-      const text = await kieCall(keys.kie, body);
-      let json; try { json = JSON.parse(text.trim().replace(/^```(?:json)?\s*|\s*```$/g, '')); } catch { throw fail('kie: unparseable JSON reply', false); }
+      const { text, used } = await kieCall(keys.kie, body);
+      const cut = maxOutputTokens && used >= maxOutputTokens * 0.98;
+      let json; try { json = JSON.parse(text.trim().replace(/^```(?:json)?\s*|\s*```$/g, '')); } catch { throw fail(`kie: unparseable JSON reply${cut ? ' (cut off at the output limit)' : ''}`, !cut); }
       return { out: fit(Array.isArray(json) && schema.type === 'object' ? json[0] : json, schema), model: ANALYSIS_MODEL };
     } catch (e) {
-      if (e.retry && attempt < 5) { await sleep(2000 * 2 ** attempt); continue; }
+      if (e.retry && attempt < TRIES) { console.error(`${e.message} — retrying kie (${attempt}/${TRIES - 1})`); await sleep(2000 * 2 ** attempt); continue; }
       if (!keys.gateway) throw e;
-      console.error(`${e.message} — retrying on the AI Gateway (${FALLBACK_MODEL})`);
+      console.error(`${e.message} — kie failed ${attempt}x, falling back to the AI Gateway (${FALLBACK_MODEL})`);
       return { out: await viaGateway(keys.gateway, { parts, schema, temperature, maxOutputTokens }), model: FALLBACK_MODEL };
     }
   }

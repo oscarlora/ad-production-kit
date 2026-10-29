@@ -3,7 +3,7 @@
 // Click or drag along the ruler to move the playhead; drag above it to pick a stretch to comment on, its edges snapping
 // to a block edge within SNAP px. With Shift held, the playhead and both edges jump to the nearest block edge.
 // Clicking a media clip opens its trim panel. A track's eye hides its picture in the preview only; its speaker mutes or
-// unmutes it in the edit. simple hides the tracks, leaving the ruler and comments.
+// unmutes it in the edit. simple hides the tracks, leaving the ruler and comments. A track with no clips isn't shown.
 import { memo, useMemo, useRef } from 'react';
 import { hasSound, keyed, tin } from '../../engine/doc.js';
 import { clock } from '../../lib/client/format.js';
@@ -136,7 +136,7 @@ export default function Timeline({ doc, t, comments, nums, lib, lit, range, onRa
           ))}
         </div>
       </div>
-      {!simple && doc.tracks.map((tr, i) => <Track key={i} tr={tr} dur={dur} hide={off.has(tr.name)} onToggle={onToggle} onMute={onMute} onClip={onClip} url={url} lib={lib} />)}
+      {!simple && doc.tracks.map((tr, i) => tr.clips.length > 0 && <Track key={i} tr={tr} dur={dur} hide={off.has(tr.name)} onToggle={onToggle} onMute={onMute} onClip={onClip} url={url} lib={lib} />)}
       <div className="tl-play">
         {range && <div className="tl-range" style={{ left: pct(range[0], dur), width: pct(range[1] - range[0], dur) }} />}
         <div className="tl-head" style={{ left: pct(t, dur) }} />

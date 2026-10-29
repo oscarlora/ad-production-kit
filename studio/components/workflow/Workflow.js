@@ -2,19 +2,19 @@
 // The Workflow page: the ad list with current steps (no `ad`), or one ad's step bar and artifacts.
 import Link from 'next/link';
 import { useCallback, useMemo, useState } from 'react';
-import { brandUrl, fileUrl, workflowUrl } from '../../lib/client/api.js';
+import { brandUrl, editApi, fileUrl, workflowUrl } from '../../lib/client/api.js';
 import { words } from '../../lib/client/format.js';
 import { useBrandData } from '../../lib/client/hooks.js';
 import { BarSelect, Bars, byId, formatOptions, LoadError, SORTS, statusOf, statusOptions } from '../BrandPage.js';
 import Editor from '../edit/Editor.js';
-import { IcFilm, IcLeft, IcStatus } from '../icons.js';
+import { IcCheck, IcFilm, IcLeft, IcStatus } from '../icons.js';
 import Player from '../Player.js';
 import ViewerShell from '../ViewerShell.js';
 import Footage from './Footage.js';
 import { Dot, TextDisclosure } from './parts.js';
 import Markdown from './Markdown.js';
 import MdEditor from './MdEditor.js';
-import Storyboard from './Storyboard.js';
+import Storyboard, { Sheets } from './Storyboard.js';
 
 const baseName = (n) => n.split('/').pop();
 const STATE = { done: 'Done', current: 'Current', todo: 'Not started' };
@@ -86,14 +86,36 @@ function Files({ ws, brand, ad, files, view, script, comments }) {
   );
 }
 
+// The voiceover takes; picking one tells the agent to retime the storyboard to it.
+function Voices({ ws, brand, ad, takes }) {
+  const [picked, setPicked] = useState(null);
+  const current = picked || takes.find((t) => t.picked)?.name;
+  const pick = (name) => { setPicked(name); editApi(ws, brand, ad)({ voice: name }).catch(() => setPicked(null)); };
+  return takes.map((t) => (
+    <figure key={t.p} className="flow-audio">
+      <figcaption>{baseName(t.name)}</figcaption>
+      <div className="flow-audio__row">
+        <Player kind="audio" src={fileUrl(ws, brand, t.p, t.v)} preload="none" label={baseName(t.name)} />
+        <button type="button" className="chip" aria-pressed={t.name === current} onClick={() => pick(t.name)}>
+          {t.name === current ? <><IcCheck />Picked</> : 'Pick this take'}
+        </button>
+      </div>
+    </figure>
+  ));
+}
+
 function Panel({ ws, brand, step, data }) {
   const pn = step.panel || {};
   const { storyboard, footage } = data;
   if (pn.editor) return <section className="flow-panel"><Editor ws={ws} brand={brand} ad={data.folder} edit={data.edit} /></section>;
-  const has = pn.note || pn.md || pn.fields || pn.files || (pn.storyboard && storyboard) || (pn.footage && footage);
+  const has = pn.note || pn.md || pn.fields || pn.files || pn.voices || pn.sheets || (pn.storyboard && storyboard) || (pn.footage && footage);
   return (
     <section className="flow-panel">
-      {!has && <p className="flow-note">{step.done ? 'Nothing to show for this step.' : 'Not started.'}</p>}
+      {!has && (
+        <div className="empty-state">
+          {step.done ? 'Nothing to show for this step.' : `Ask the agent to start ${step.key === 'edit' ? 'editing' : 'this step'}.`}
+        </div>
+      )}
       {pn.note && <p className="flow-note">{pn.note}</p>}
       {pn.md && <Markdown text={pn.md} />}
       {pn.fields && pn.fields.map(([k, v]) => (
@@ -102,16 +124,18 @@ function Panel({ ws, brand, step, data }) {
           <div className="v v--pre">{v}</div>
         </div>
       ))}
-      {pn.files && <Files ws={ws} brand={brand} ad={data.folder} files={pn.files} view={pn.view} script={step.key === 'script'} comments={data.comments || []} />}
       {pn.storyboard && storyboard && <Storyboard ws={ws} brand={brand} sb={storyboard} />}
+      {pn.sheets && <Sheets ws={ws} brand={brand} sheets={pn.sheets} />}
+      {pn.voices && <Voices ws={ws} brand={brand} ad={data.folder} takes={pn.voices} />}
+      {pn.files && <Files ws={ws} brand={brand} ad={data.folder} files={pn.files} view={pn.view} script={step.key === 'script'} comments={data.comments || []} />}
       {pn.footage && footage && <Footage ws={ws} brand={brand} ad={data.folder} footage={footage} comments={data.comments || []} />}
     </section>
   );
 }
 
-// Opens on the edit when there is one, else the storyboard, else the step in progress if it shows something, else the last one done.
+// Opens on the edit when there is one, else a slides storyboard, else the step in progress if it shows something, else the last one done.
 const defaultStep = (d) => d.steps.find((s) => s.panel?.editor)?.key
-  || (d.storyboard && 'storyboard')
+  || d.steps.find((s) => s.key === 'storyboard' && s.done)?.key
   || d.steps.find((s) => s.state === 'current' && Object.keys(s.panel || {}).length)?.key
   || [...d.steps].reverse().find((s) => s.done)?.key
   || d.steps[0]?.key;

@@ -4,7 +4,7 @@ import { app, BrowserWindow, dialog, Menu, shell } from 'electron';
 import { execFileSync, spawn } from 'node:child_process';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
-import { dirname, join } from 'node:path';
+import { dirname, extname, join } from 'node:path';
 
 const PORT = 4179; // Studio's own default
 const SPARE_PORT = 4189; // when a Studio without the chat (an older ADPK) holds the default
@@ -138,6 +138,13 @@ async function open() {
   // Links that leave Studio open in the browser.
   win.webContents.setWindowOpenHandler(({ url }) => { shell.openExternal(url); return { action: 'deny' }; });
   win.on('closed', () => { win = null; });
+  // Downloads go straight to Downloads (a save dialog per file would stop a multi-file download at the first).
+  win.webContents.session.on('will-download', (_, item) => {
+    const name = item.getFilename(), ext = extname(name), base = name.slice(0, name.length - ext.length);
+    let path = join(app.getPath('downloads'), name);
+    for (let n = 2; existsSync(path); n++) path = join(app.getPath('downloads'), `${base} (${n})${ext}`);
+    item.setSavePath(path);
+  });
   await win.loadURL(loading('Starting Studio…'));
   app.focus({ steal: true });
 

@@ -37,8 +37,9 @@ class Cursor {
 
 export class Media {
   // url(src) -> fetchable URL of a doc path; caches key on url(src), which carries the file's version.
-  constructor(url) {
+  constructor(url, { mono = false } = {}) {
     this.url = url;
+    this.mono = mono; // sound folded to one channel (the preview)
     this.videos = new Map(); // url -> Promise<{ track, half, duration }>
     this.cursors = new Map(); // clip id -> Cursor
     this.queue = new Map(); // clip id -> its last pending decode
@@ -123,10 +124,16 @@ export class Media {
         const buf = await ctx.decodeAudioData(await r.arrayBuffer()).catch(() => null);
         if (!buf) return null; // a video without sound plays silent
         // Pad the lead decodeAudioData drops, so buffer time = file time, like the video frames.
-        const lead = Math.round((await audioLead(key)) * buf.sampleRate);
-        if (lead < buf.sampleRate / 100) return buf;
-        const out = new AudioBuffer({ numberOfChannels: buf.numberOfChannels, length: buf.length + lead, sampleRate: buf.sampleRate });
-        for (let ch = 0; ch < buf.numberOfChannels; ch++) out.copyToChannel(buf.getChannelData(ch), ch, lead);
+        let lead = Math.round((await audioLead(key)) * buf.sampleRate);
+        if (lead < buf.sampleRate / 100) lead = 0;
+        const fold = this.mono && buf.numberOfChannels > 1;
+        if (!lead && !fold) return buf;
+        const out = new AudioBuffer({ numberOfChannels: fold ? 1 : buf.numberOfChannels, length: buf.length + lead, sampleRate: buf.sampleRate });
+        if (fold) {
+          const m = new Float32Array(buf.length), chans = Array.from({ length: buf.numberOfChannels }, (_, i) => buf.getChannelData(i));
+          for (const x of chans) for (let i = 0; i < m.length; i++) m[i] += x[i] / chans.length;
+          out.copyToChannel(m, 0, lead);
+        } else for (let ch = 0; ch < buf.numberOfChannels; ch++) out.copyToChannel(buf.getChannelData(ch), ch, lead);
         return out;
       })().catch(() => { this.audio.delete(key); return undefined; }); // a failed fetch: undefined, retried next time
       this.audio.set(key, p);

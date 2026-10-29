@@ -71,7 +71,7 @@ function Scene({ ws, brand, row, comments, onComment, onDecide }) {
     <article className="ft-row">
       <div className="ft-clip">
         {row.clip ? (
-          <Player src={fileUrl(ws, brand, row.clip.p, row.clip.v)} label={row.scene} />
+          <Player src={fileUrl(ws, brand, row.clip.p, row.clip.v, 720)} label={row.scene} />
         ) : <div className="ft-clip__empty">No clip</div>}
       </div>
       <div className="ft-body">

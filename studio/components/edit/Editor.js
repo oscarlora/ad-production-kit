@@ -13,6 +13,8 @@ import Timeline from './Timeline.js';
 import Trim from './Trim.js';
 
 const SIMPLE_KEY = 'ad-production-kit-studio:timeline-simple';
+const VIDEO = /\.(mp4|mov|m4v|webm)$/i;
+const PREVIEW_W = 720;
 
 // A doc path (relative to the ad folder, may climb with ../) as a brand-relative path; climbing past the
 // brand keeps its ../ (the shared library).
@@ -99,7 +101,8 @@ export default function Editor({ ws, brand, ad, edit }) {
 
   const versions = useRef({}); // src -> mtime, so a replaced file gets a new URL
   versions.current = plan.media || {};
-  const url = useCallback((src) => fileUrl(ws, brand, brandPath(ad, src), versions.current[src]), [ws, brand, ad]);
+  // Videos preview from a light copy (PREVIEW_W wide); the export reads the originals.
+  const url = useCallback((src) => fileUrl(ws, brand, brandPath(ad, src), versions.current[src], VIDEO.test(src) ? PREVIEW_W : undefined), [ws, brand, ad]);
   // src -> what the media library saved for that file (its frames and waveform), or null when it isn't a library file;
   // the timeline draws a clip's frames and waveform once its src is here.
   const [lib, setLib] = useState({});
@@ -205,7 +208,7 @@ export default function Editor({ ws, brand, ad, edit }) {
   useEffect(() => {
     let dead = false, eng = null;
     import('../../engine/index.js').then(async ({ createEngine }) => {
-      eng = await createEngine({ canvas: canvasRef.current, url });
+      eng = await createEngine({ canvas: canvasRef.current, url, light: true });
       if (dead) { eng.close(); return; }
       engineRef.current = eng;
       setEngine(eng);

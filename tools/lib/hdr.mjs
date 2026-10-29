@@ -5,9 +5,7 @@
 // zscale + tonemap (hable), else a plain BT.2020 -> BT.709 colorspace conversion. Works with the macOS
 // (martin-riedl) and Windows (gyan.dev) ffmpeg builds setup installs.
 import { renameSync, rmSync, statSync } from 'node:fs';
-import { spawn } from 'node:child_process';
-import { setPriority } from 'node:os';
-import { ffprobeJson, findBin, run, cachedFile, typeOf } from './catalog.mjs';
+import { ffprobeJson, run, runAsync, cachedFile, typeOf, videoToolbox } from './catalog.mjs';
 
 // HDR when the transfer is HLG or PQ, or the primaries are BT.2020. → 'hlg' | 'pq' | 'bt2020' | null
 export function hdrKind(file) {
@@ -52,27 +50,12 @@ export function toneFilter(kind, how = toneMethod()) {
 }
 
 // Light on a laptop: decode and encode on the Mac's media engine (VideoToolbox) when there is one, else libx264
-// on 4 threads; the tone-map filters on 2; the whole job at the lowest CPU priority (makeSdr).
-let vt;
-const videoToolbox = () => (vt ??= process.platform === 'darwin' && /h264_videotoolbox/.test(run('ffmpeg', ['-hide_banner', '-encoders'], { allowFail: true }).stdout || ''));
+// on 4 threads; the tone-map filters on 2; the whole job at the lowest CPU priority (sdrSource).
 export const sdrCmd = (file, out, kind = kindOf(file)) => ['ffmpeg', ['-y', '-v', 'error', ...(videoToolbox() ? ['-hwaccel', 'videotoolbox'] : ['-threads', '4']),
   '-filter_threads', '2', '-i', file, '-map', '0:v:0', '-map', '0:a?', '-vf', toneFilter(kind),
   ...(videoToolbox() ? ['-c:v', 'h264_videotoolbox', '-q:v', '70'] : ['-c:v', 'libx264', '-threads', '4', '-preset', 'veryfast', '-crf', '16']),
   '-g', '30', '-pix_fmt', 'yuv420p', '-color_primaries', 'bt709', '-color_trc', 'bt709', '-colorspace', 'bt709', '-color_range', 'tv',
   '-c:a', 'copy', '-movflags', '+faststart', out]];
-
-// Run sdrCmd at the lowest priority (nice 19 / Windows idle class), so editing stays usable while it encodes.
-function makeSdr(file, out, kind) {
-  const [bin, args] = sdrCmd(file, out, kind);
-  return new Promise((res, rej) => {
-    const p = spawn(findBin(bin) || bin, args, { stdio: ['ignore', 'ignore', 'pipe'] });
-    try { setPriority(p.pid, 19); } catch {}
-    let err = '';
-    p.stderr.on('data', (d) => { err = (err + d).slice(-4000); });
-    p.on('error', rej);
-    p.on('close', (code) => (code === 0 ? res() : rej(new Error(`ffmpeg (SDR copy) failed: ${err}`))));
-  });
-}
 
 // The file to decode frames from: an HDR video's SDR copy (made once, cached in <OS temp>), else the file itself.
 // Concurrent requests share one encode.
@@ -85,7 +68,7 @@ export async function sdrSource(file) {
     const t0 = Date.now();
     const job = cachedFile(file, { cache: 'ad-production-kit-sdr', key: `${toneMethod()}-v2`, ext: 'mp4' }, async (tmp) => {
       console.error(`HDR (${kind}) source: making its SDR copy with ${toneMethod()} (once per file): ${file}`);
-      await makeSdr(file, tmp, kind);
+      await runAsync(...sdrCmd(file, tmp, kind), { low: true });
       console.error(`  SDR copy ready in ${Math.round((Date.now() - t0) / 1000)}s`);
     });
     making.set(file, job);

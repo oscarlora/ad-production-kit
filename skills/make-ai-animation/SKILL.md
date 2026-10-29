@@ -12,23 +12,28 @@ A scripted scene, animated, on one of two paths (step 1):
 - **Dialogue:** the characters speak their lines, one clip per shot. **Both** (a narrator too)
   follows this path and adds the narrator from the narrated one.
 
-Every shot is approved as a still before it becomes a clip. Work in `outputs/<ad>/`: `script.md`, `storyboard.md`, `voice/`, `sheets/`,
-`frames/`, `prompts/`, `clips/`, `audio/`, `drafts/`, `final/`. Keep replaced takes beside the new
-ones with a letter suffix (`frame-03-a.png`, `clip-01-b.mp4`).
+Every shot is approved as a still before it becomes a clip. Work in `outputs/<ad>/`: `storyboard.md`
+(concept, notes and shots), `voice/`, `sheets/`, `frames/`, `prompts/`, `clips/`, `audio/`, `drafts/`,
+`final/`. Keep replaced takes beside the new ones with a letter suffix (`frame-03-a.png`,
+`clip-01-b.mp4`). Studio's Workflow page follows these steps (block format: **open-studio**).
 
 ## 1. Concept
 
 Load the brand context (AGENTS.md). Persona, angle and the 2–4 claims it carries pass **write-copy**'s
 claims gate, unless the brief or a reference sets them. The product's own lines carry only signed-off claims; bigger
 reactions ("she can't be fifty-nine") stay in the characters' mouths, never the narrator's or the
-end card's. Settle the **path** here.
+end card's.
 
-Look for **one visual device that carries the angle** for the whole film, and let the solution break
-it: a tired mom juggling plates that keep multiplying sets them all down when the answer arrives.
-Use it only in the beats about it.
+Lock seven fields in `storyboard.md`'s CONCEPT section, before anything else:
 
-Then lock the **style**, unless the user named one, from those on this list that suit the persona
-and tone:
+- **Product**, **Persona** (with the awareness stage this ad targets), **Angle**.
+- **Format:** the path, narrated, dialogue or both.
+- **Style**, unless the user named one, from those on the list below that suit the persona and tone,
+  or matched to a style reference.
+- **Cast:** each character in more than one shot, named, with look and wardrobe. Every sheet and
+  frame uses it; one-shot characters are described in their shot.
+- **Reference:** the reference ads as media blocks (a script reference, a style reference), or "From
+  scratch".
 
 1. **Pixar-like 3D** — warm soft light, rounded faces, big expressive eyes.
 2. **DreamWorks-like 3D** — punchier, cheekier: smirks, raised brows, comic timing.
@@ -41,33 +46,25 @@ and tone:
 9. **Flat 2D cartoon** — simple shapes, bold flat color, thick outlines.
 10. **Storybook** — soft 3D or 2D picture-book look, pastel and cozy.
 
-## 2. Script
+## 2. Script and storyboard
 
-Locked if the brief has one or the user writes it (**write-copy**'s user-written rule). Otherwise
-write it with **write-copy**, including its pace (Length).
+The script is written straight into the shot list, so each line shows with what we see. Locked if the
+brief has one or the user writes it (**write-copy**'s user-written rule). Otherwise write it with
+**write-copy**, including its pace (Length).
 
 - **Narrated:** one voice to the viewer, one line per idea, every line something you can picture.
 - **Dialogue:** **write-copy**'s dialogue rules; narrator lines `VO:`.
 
-## 3. Voice
+`storyboard.md` after the CONCEPT: a NOTES section (the device, symbols, blocking, direction), then a
+STORYBOARD section whose table is the file's **first table**, columns `# | s | Line | What we see |
+Camera | Into the next shot`, then any other table (clips, sound). Studio's Script step shows just
+each line and what we see, for planning; the shots show as cards from Frames on.
 
-- **Narrated:** generate the voiceover now (**generate-voice**), takes differing in voice and
-  delivery. Get the chosen take's word timings (`node tools/transcribe-media.mjs --in <take>
-  --words`) and map each script line to its start and end: those times set the shots.
-- **Dialogue:** the clips make the voices (step 7). Write a voice block per speaking character
-  (**generate-voice**), each clearly different. Lock the blocks before the first clip; a later change
-  breaks that character's earlier clips. Plan to
-  even the voices out in the edit. **Both:** this, plus the narrator generated as above and laid in
-  at the edit.
-
-## 4. Storyboard
-
-A numbered shot list in `storyboard.md`. Studio's Workflow page reads the **first table** in the file
-as the shot list, so it comes first, with the columns `# | s | Line | What we see | Camera | Into the
-next shot`; cast, symbols, blocking and direction go above it as notes, and any other table (clips,
-sound) below it.
-
-- **Shot length.** Narrated: cut where each line starts, on the voiceover's timings. A line that
+- **One visual device carries the angle** for the whole film, and the solution breaks it: a tired mom
+  juggling plates that keep multiplying sets them all down when the answer arrives. Use it only in
+  the beats about it.
+- **Shot length.** Narrated: cut where each line starts; until a voice take is picked (step 3), time
+  it at 4 words a second. A line that
   lists things gets a shot per item, cut on each word; items that belong together share one frame,
   each emphasized on its word (three nutrients glowing in turn). Dialogue: one line = one shot, its
   seconds from the words at **write-copy**'s pace, rounded up, minimum 4; fold quick back-and-forth
@@ -76,8 +73,8 @@ sound) below it.
 - **Read the board as one story before any frame.** Each shot shows one thing, the thing its line
   says, as literally as possible. No two shots repeat a picture, heading or idea unless the repeat
   is the point (a callback). A symbol keeps one meaning and a recurring character one role. Say
-  exactly who is in each shot. Name every recurring setting and prop; step 5 makes a sheet for each.
-- **Block each setting once**, above the shot table: where everyone stands, which way they face, and
+  exactly who is in each shot. Name every recurring setting and prop; step 4 makes a sheet for each.
+- **Block each setting once**, in the notes: where everyone stands, which way they face, and
   which side the camera stays on. Name each setting's first frame as its master.
 - **Direct the motion.** One main camera move per shot, smooth like a motion-control rig. Every cut
   is motivated: the camera follows something (a thrown plate, a whip pan) out of one shot and lands
@@ -89,10 +86,23 @@ sound) below it.
 - **Sound effects** only: each shot's sounds, specific to its action and timed to it (a plate
   clattering). A recurring sound gets the same words every time. No music, voices or ambience.
 
-## 5. Characters, settings and props
+## 3. Voice
 
-Before any frame, make a sheet for every character, setting and prop in more than one shot. Anything
-in a single shot is described in that frame's prompt instead.
+- **Narrated:** generate the voiceover (**generate-voice**) into `voice/`, takes differing in voice and
+  delivery. The user picks one on Studio's Voice step (saved as `voice.json`; the pick reaches you as
+  a comment). Get that take's word timings (`node tools/transcribe-media.mjs --in <take> --words`) and
+  retime the board: each line's start and end set its shots.
+- **Dialogue:** the clips make the voices (step 6). Write a voice block per speaking character
+  (**generate-voice**) in `voices.md`, each clearly different. Lock the blocks before the first clip; a later change
+  breaks that character's earlier clips. Plan to
+  even the voices out in the edit. **Both:** this, plus the narrator generated and picked as above and laid in
+  at the edit.
+
+## 4. Sheets
+
+Before any frame, make a sheet for every character (the concept's Cast), setting and prop (the
+storyboard's) in more than one shot. Anything in a single shot is described in that frame's prompt
+instead. Studio shows each sheet as a card with its prompt and references.
 
 1. **Hero first, alone:** the main character in the locked style (front, three-quarter, side, full
    body, a few expressions). The user approves it as the style lock before any other sheet.
@@ -113,7 +123,7 @@ in a single shot is described in that frame's prompt instead.
 
 Generate each sheet once.
 
-## 6. Storyboard frames
+## 5. Frames
 
 One 9:16 still per shot, its opening moment, from the sheets of everyone and everything in it. Make
 each setting's master first, then the rest in parallel with the master as a reference. Prompts
@@ -139,11 +149,11 @@ follow **write-prompt**'s "How a model reads a prompt".
 - Once a character's look is set in an approved frame, that frame outranks their sheet. Restate each
   character's defining wardrobe in every frame prompt.
 - As a scene's frames land, check them against the blocking and each other (seats, screen sides,
-  camera side, eyelines, wardrobe, props, light) and against step 4's one-story rules, and flag what's
+  camera side, eyelines, wardrobe, props, light) and against step 2's one-story rules, and flag what's
   off to the user.
 - No text beyond prop labels and the product.
 
-## 7. Clips
+## 6. Clips
 
 Every clip prompt follows **write-prompt**'s "How a model reads a prompt", above all **animate from
 the frame, not against it**. Each prompt stands alone, written like a director's notes and laid out in its model's syntax
@@ -193,7 +203,7 @@ misses, fix its prompt (**write-prompt**) and regenerate **that shot
 alone** from its frame (`--first-frame`, at least the model's minimum length; fix the frame first
 when the frame set it up), then splice it in at the clip's real cut.
 
-## 8. Edit
+## 7. Edit
 
 Ask whether to edit here or hand off.
 

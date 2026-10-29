@@ -1,8 +1,9 @@
 // transcribe.mjs — speech for the media catalog and for captions.
-//   transcribeAudio — ANALYSIS_MODEL on a mono 16 kHz track → sentence transcript (speakers S1, S2…) plus
-//     an account of the sound: an audio file's analysis, a clip outside the library, or a video's track
-//     when its picture call can't transcribe it (past LONG s, or looped). Sentence times are ±1 s: fine for
-//     search, not captions.
+//   describeAudio — an audio file's analysis: ANALYSIS_MODEL hears the whole file once (its sections,
+//     descriptor and, up to LONG s, its transcript); a longer file with speech is transcribed apart.
+//   transcribeAudio — ANALYSIS_MODEL on a mono 16 kHz track → sentence transcript (speakers S1, S2…): a
+//     long audio file, a clip outside the library, or a video's track when its picture call can't
+//     transcribe it (past LONG s, or looped). Sentence times are ±1 s: fine for search, not captions.
 //   alignWords — local Whisper (whisper.cpp) words replace that sentence text (they are the more
 //     accurate), keeping its sentences and speakers; each word edge snapped to speech energy.
 //
@@ -16,7 +17,7 @@ import { Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import { have, run, ffprobeJson, readRoster, inferBrand, loudness, round, FFMPEG_FIX } from './catalog.mjs';
 import { generateJSON, filePart, ANALYSIS_MODEL, INLINE_MAX } from './analyze.mjs';
-import { buildAudioPrompt, buildAudioSchema, buildMergePrompt, buildMergeSchema } from './analysis-prompt.mjs';
+import { buildAudioPrompt, buildAudioSchema, buildMergePrompt, MERGE_SCHEMA } from './analysis-prompt.mjs';
 
 const SILENT_DB = -50; // a track whose loudest peak is below this is silence (digital silence reads -91)
 
@@ -53,14 +54,24 @@ export function vocabulary(mediaDir) {
   return [...new Set(names.filter(Boolean).map(String))];
 }
 
-// keys = analysisKeys(). → { has_speech, language, sentences, sound, model (, descriptor) }. Tracks past LONG s go in ~PART s
-// parts (one long call loops until its JSON is cut off), split at quiet moments, with OVERLAP s either
-// side; a text-only merge call unifies speaker numbering and portraits.
+// keys = analysisKeys(). → { descriptor, sections, has_speech, language, sentences, model }. Only the
+// transcript is split: a description stays whole, so it hears the whole track.
+export async function describeAudio(keys, track, { brand, vocab = [] } = {}) {
+  const long = track.duration > LONG;
+  const out = await soundCall(keys, track.path, { brand, vocab, standalone: true, transcribe: !long, duration: track.duration });
+  if (!long || !out.has_speech) return out;
+  const t = await transcribeAudio(keys, track, { brand, vocab });
+  return { ...out, ...t, model: [...new Set([out.model, ...t.model.split(' + ')])].join(' + ') };
+}
+
+// → { has_speech, language, sentences, model }. Tracks past LONG s go in ~PART s parts (one long call
+// loops until its JSON is cut off), split at quiet moments, with OVERLAP s either side; a text-only
+// merge call unifies speaker numbering.
 export const LONG = 180;
 const PART = 150, OVERLAP = 2, SNAP_WINDOW = 15;
-export async function transcribeAudio(keys, track, { brand, vocab = [], standalone = false } = {}) {
+export async function transcribeAudio(keys, track, { brand, vocab = [] } = {}) {
   const dur = track.duration;
-  const call = (path, duration, part) => soundCall(keys, path, { brand, vocab, standalone, duration, part });
+  const call = (path, duration, part) => soundCall(keys, path, { brand, vocab, duration, part });
   if (!dur || dur <= LONG) return call(track.path, dur, null);
 
   const cuts = splitPoints(track.path, dur, Math.ceil(dur / PART));
@@ -80,26 +91,24 @@ export async function transcribeAudio(keys, track, { brand, vocab = [], standalo
     return (o.sentences || []).map((x) => ({ ...x, start: at(x.start), end: at(x.end) }))
       .filter((x) => { const mid = (x.start + x.end) / 2; return mid >= parts[k].own[0] && (mid < parts[k].own[1] || k === parts.length - 1); });
   });
-  const merged = await mergeParts(keys, parts, outs, kept, standalone);
+  const map = await mergeSpeakers(keys, parts, outs, kept);
   const langs = outs.filter((o) => o.has_speech && o.language).map((o) => o.language);
   return {
     unreadable: false,
     has_speech: outs.some((o) => o.has_speech),
     language: langs.sort((a, b) => langs.filter((l) => l === b).length - langs.filter((l) => l === a).length)[0] || '',
-    sentences: numberSpeakers(kept.flatMap((ss, k) => ss.map((x) => ({ ...x, speaker: merged.map.get(`${k + 1}:${x.speaker}`) || `part${k + 1}:${x.speaker}` })))),
-    sound: merged.sound,
+    sentences: numberSpeakers(kept.flatMap((ss, k) => ss.map((x) => ({ ...x, speaker: map.get(`${k + 1}:${x.speaker}`) || `part${k + 1}:${x.speaker}` })))),
     model: [...new Set(outs.map((o) => o.model))].join(' + '),
-    ...(standalone ? { descriptor: merged.descriptor } : {}),
   };
 }
 
 // A cut-off or looping reply is retried once with a repetition limit at temperature 1; loops left
 // after that are collapsed.
-async function soundCall(keys, path, { brand, vocab, standalone, duration, part }) {
+async function soundCall(keys, path, { brand, vocab, standalone = false, transcribe = true, duration, part }) {
   const secs = duration ? round(duration, 1) : null;
   const ask = async (strict) => {
     const { out, model } = await generateJSON(keys, {
-      parts: [filePart(path, 'audio/mpeg'), { text: buildAudioPrompt({ brand, vocab, duration: secs, standalone, part, strict }) }],
+      parts: [filePart(path, 'audio/mpeg'), { text: buildAudioPrompt({ brand, vocab, duration: secs, standalone, transcribe, part, strict }) }],
       schema: buildAudioSchema({ standalone, part: !!part }),
       maxOutputTokens: 8000 + Math.round(25 * (secs || PART)), // thinking counts too; a loop hits this in seconds, not minutes
       ...(strict ? { temperature: 1 } : {}),
@@ -160,20 +169,20 @@ function numberSpeakers(sentences) {
   return sentences.map((x) => ({ ...x, speaker: ids.get(x.speaker) || ids.set(x.speaker, `S${ids.size + 1}`).get(x.speaker) }));
 }
 
-// Falls back to the parts' own labels and joined portraits when the merge call fails.
-async function mergeParts(keys, parts, outs, kept, standalone) {
+// → Map "part:label" → global label; empty (each part keeps its own labels) when the merge call fails.
+async function mergeSpeakers(keys, parts, outs, kept) {
   const input = parts.map((p, k) => {
     const lines = {};
     for (const x of kept[k]) { const l = (lines[x.speaker] ||= []); if (l.length < 3) l.push(String(x.text).slice(0, 160)); }
     const speakers = outs[k].speakers?.length ? outs[k].speakers : Object.keys(lines).map((label) => ({ label, voice: '' }));
-    return { index: p.index, from: p.from, to: p.to, speakers, lines, sound: outs[k].sound };
+    return { index: p.index, from: p.from, to: p.to, speakers, lines };
   });
   try {
-    const { out: m } = await generateJSON(keys, { parts: [{ text: buildMergePrompt({ parts: input, standalone }) }], schema: buildMergeSchema({ standalone }) });
-    return { map: new Map((m.speakers || []).map((x) => [`${x.part}:${x.label}`, x.speaker])), sound: m.sound, descriptor: m.descriptor };
+    const { out: m } = await generateJSON(keys, { parts: [{ text: buildMergePrompt({ parts: input }) }], schema: MERGE_SCHEMA });
+    return new Map((m.speakers || []).map((x) => [`${x.part}:${x.label}`, x.speaker]));
   } catch (e) {
     console.error(`merge call failed (${e.message}) — keeping each part's own speaker labels`);
-    return { map: new Map(), sound: outs.map((o) => o.sound).filter(Boolean).join(' '), descriptor: outs[0].descriptor };
+    return new Map();
   }
 }
 

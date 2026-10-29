@@ -1,5 +1,5 @@
 'use client';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { fileUrl } from '../../lib/client/api.js';
 import { IcArchive, IcCheck, IcPen, IcPlay, IcX } from '../icons.js';
 
@@ -53,6 +53,9 @@ export function Compose({ value, onChange, onSend, onClose, sendOnBlur, placehol
 const STAGE = { open: ['todo', 'Waiting'], seen: ['current', 'Working on it'], done: ['done', 'Ready to review'], approved: ['done', 'Approved'] };
 const ORDER = { done: 0, seen: 1, open: 1 };
 
+// The comments not yet approved, ready to review first: the list's order.
+export const openComments = (comments) => comments.filter((n) => n.status !== 'approved').sort((a, b) => (ORDER[a.status] ?? 1) - (ORDER[b.status] ?? 1));
+
 // Each comment's number, 1 for the first one left; approved comments keep theirs, so a number never moves.
 export const commentNumbers = (comments) => new Map([...comments].sort((a, b) => String(a.at).localeCompare(String(b.at))).map((n, i) => [n.id, i + 1]));
 
@@ -73,17 +76,20 @@ export const Messages = ({ msgs, action }) => msgs.map((m, i) => (
 
 // The comments on a video or a brief: open ones (ready to review first), or with the archive button the approved ones
 // (newest first). lead(n) shows what a comment is on (its number and moment, or the text it quotes); onReview (optional)
-// plays a done one's change; lit highlights a comment pointed at elsewhere (and scrolls to it), onLit(id | null) tells
-// which one the pointer is on; footer goes under the list (the add-a-comment field).
+// plays a done one's change; lit (an id, or a list) highlights the comments pointed at elsewhere and scrolls to the
+// first, onLit(id | null) tells which one the pointer is on; footer goes under the list (the add-a-comment field).
 export function Comments({ comments, focus, lit, onLit, onPick, onReview, onAction, lead, hint, footer }) {
   const [showArchived, setShowArchived] = useState(false);
   const archived = comments.filter((n) => n.status === 'approved').reverse();
-  const open = comments.filter((n) => n.status !== 'approved').sort((a, b) => (ORDER[a.status] ?? 1) - (ORDER[b.status] ?? 1));
+  const open = openComments(comments);
   const ready = open.filter((n) => n.status === 'done');
   const list = showArchived ? archived : open;
   const approveAll = !showArchived && ready.length > 1;
+  const lits = [lit].flat(), box = useRef(null);
+  const jump = list.find((n) => lits.includes(n.id))?.id;
+  useEffect(() => { box.current.querySelector(`[data-id="${jump}"]`)?.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); }, [lit]); // eslint-disable-line react-hooks/exhaustive-deps
   return (
-    <section className="ed__comments">
+    <section className="ed__comments" ref={box}>
       <div className="ed__comments-head">
         <span className="ed__count">{list.length} {showArchived ? 'archived' : list.length === 1 ? 'comment' : 'comments'}</span>
         <div className="spacer" />
@@ -99,7 +105,7 @@ export function Comments({ comments, focus, lit, onLit, onPick, onReview, onActi
       {list.length > 0 && (
         <ul>
           {list.map((n) => (
-            <Comment key={n.id} n={n} focused={n.id === focus} lit={n.id === lit} onLit={onLit} onPick={onPick} onReview={onReview} onAction={onAction} lead={lead} />
+            <Comment key={n.id} n={n} focused={n.id === focus} lit={lits.includes(n.id)} onLit={onLit} onPick={onPick} onReview={onReview} onAction={onAction} lead={lead} />
           ))}
         </ul>
       )}
@@ -118,8 +124,7 @@ function Comment({ n, focused, lit, onLit, onPick, onReview, onAction, lead }) {
   const pick = (e) => { if (!e.target.closest('button, textarea')) onPick(n); };
   return (
     <li
-      className="ed-comment" data-status={n.status} data-lit={lit || undefined} aria-current={focused || undefined} onClick={pick}
-      ref={lit ? (el) => el?.scrollIntoView({ block: 'nearest', behavior: 'smooth' }) : undefined}
+      className="ed-comment" data-id={n.id} data-status={n.status} data-lit={lit || undefined} aria-current={focused || undefined} onClick={pick}
       onPointerEnter={onLit && (() => onLit(n.id))} onPointerLeave={onLit && (() => onLit(null))}
     >
       <div className="ed-comment__head">
@@ -136,16 +141,22 @@ function Comment({ n, focused, lit, onLit, onPick, onReview, onAction, lead }) {
       </div>
       {edit != null
         ? <Compose className="ft-compose" value={edit} onChange={setEdit} onSend={(text) => onAction({ comment: { ...n, text } })} onClose={() => setEdit(null)} />
-        : <div className="ft-thread"><Messages msgs={chat([n])} /></div>}
+        : (
+          <div className="ft-thread">
+            <Messages msgs={chat([n])} />
+            {say != null && (
+              <div className="ft-say" data-you>
+                <Compose className="ft-compose--bubble" placeholder="What's still off?" value={say} onChange={setSay} onSend={(text) => onAction({ sendBack: { id: n.id, text } })} onClose={() => setSay(null)} />
+              </div>
+            )}
+          </div>
+        )}
       {n.status === 'done' && say == null && (
         <div className="ed-comment__acts">
           <button type="button" className="btn btn--mini btn--primary" onClick={() => onAction({ approve: n.id })}><IcCheck />Approve</button>
           {onReview && <button type="button" className="btn btn--mini" onClick={() => onReview(n)}><IcPlay />Watch change</button>}
           <button type="button" className="btn btn--mini" onClick={() => setSay('')}>Send back</button>
         </div>
-      )}
-      {say != null && (
-        <Compose className="ft-compose" placeholder="What's still off?" value={say} onChange={setSay} onSend={(text) => onAction({ sendBack: { id: n.id, text } })} onClose={() => setSay(null)} />
       )}
     </li>
   );

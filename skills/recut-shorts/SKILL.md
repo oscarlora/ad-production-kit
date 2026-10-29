@@ -10,8 +10,8 @@ in the source ad's edit language (**edit-video**).
 
 ## 1. Inventory the lines
 
-From the source ad's transcripts, list every line: its length once pauses are cut, what it says, and
-whether it points back ("all of that", "those ingredients", "their waistline"). A line that points
+From the source ad's approved edit (its captions' word timings), list every line: its stretch on the
+edit's timeline (from clip edges where they fall), its length, what it says, and whether it points back ("all of that", "those ingredients", "their waistline"). A line that points
 back only follows the line it refers to.
 
 ## 2. Plan three cuts
@@ -23,20 +23,34 @@ Give each a different job and show the plan as a numbered list before building:
    product → CTA.
 3. **Results first** — open on the payoff, then reveal the cause: results → the answer → product → CTA.
 
-Each opens on a body line, never the source's hook takes (those are its own versions), with an
-on-screen hook that matches that line. Every line keeps its approved wording, so a recut adds no
-new claim. Keep each under 30 s; drop a supporting sentence before you rush the pace.
+Lines go in any order and can change roles (a CTA's results line as the hook, a hook line as the
+close), as long as each cut reads as one logical story. Each finds a new hook in another line, never
+the source's hook takes (those are its own versions): one a viewer gets in a single listen, with no
+set-up. A line that needs context (who "they" are, a dense claim) works mid-story, where the lines
+before it and the captions carry it. Every
+line keeps its approved wording, so a recut adds no new claim; a line may drop its first word ("But",
+"And") when its new place needs it. Keep each under 30 s; drop a supporting sentence before you rush
+the pace, starting with asides that hold off the product and its results (credentials, "that's why I
+tell my friends").
 
 ## 3. Build
 
 - **A new ad:** its own ID, record and folder, the cuts as `edit.json`, `edit-v2.json`,
-  `edit-v3.json`. Footage stays in the source ad's folder, referenced in place
-  (`../<source ad>/footage/<file>`).
-- **Pacing:** `node tools/edit-video.mjs tighten <edit.json> --gap 0.35 --keep 0.12`; a cut inside a
-  line takes a small scale step (~1.06) so it reads as a punch, not a jump.
-- **Ending:** time the product snap from the last spoken word, never from a clip's start (cutting a
-  pause splits the CTA into several clips).
-- **Text and captions:** regroup the captions by phrase and recolor the key words for each cut
-  (**caption-video**); the edit-video text rules still apply.
+  `edit-v3.json`, each built from the source's approved edit:
+  `node tools/edit-video.mjs recut <source edit.json> --lines a-b,a-b,… --hook "…" --out <new ad>/edit.json`.
+  Its clips (footage referenced in place), pacing, captions, overlays and end card carry over and the
+  music runs under the whole cut, so nothing needs tightening again.
+- **Seams:** where a stretch drops a word, check it by ear (`edit-video.mjs audio --from --to
+  --transcribe`) and move the cut until none of the word is left. A cut inside a line takes a small
+  scale step (~1.06) so it reads as a punch, not a jump.
+- **Hook framing:** each cut gets its own hook text (`--hook`), written for its new first line in the
+  source hook's style (a short tease, same length and accent), since the source's was written for
+  another line and reads off over this one; none when the stretch already has text (a list building)
+  it would repeat. Keep the source's hook visuals: `recut` carries only what's in the stretches, so
+  add them to the first stretch yourself and re-place them for its shot.
+- **Dropped first word:** when a line drops its first word ("But", "Then"), make sure the next word
+  survives whole; when the two run together, keep both.
+- **Text:** the edit-video text rules still apply. A graphic in the hook stretch that
+  builds on an earlier line now coming later (blocks stacked a line before) comes out, with its sound.
 
 Brand memory says whether a brand always gets a recut after a UGC edit.

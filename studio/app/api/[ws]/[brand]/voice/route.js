@@ -17,7 +17,24 @@ function voiceOf(dir) {
   return `[CREATOR]
 description: ${who}, talking to a friend across the table about something they just figured out: warm, a little fired up. Talks fast and keeps moving, about 4 words a second, like an energetic social video: short breaths only, no long pauses between sentences, never like an announcer.
 voice_name: ${/\b(man|male|guy|father|dad)\b/i.test(who) ? 'Puck' : 'Kore'}
+
+[FRIEND]
+description: Their friend across the table, relaxed and casual, reacting naturally.
+voice_name: Aoede
 `;
+}
+
+// A line may hold dialogue labels ("FRIEND (OFF CAMERA): …"); each starts its own turn and is never spoken.
+// YOU / CREATOR labels and unlabeled text are the creator; any other label is the friend.
+const LABEL = /\b([A-Z]{2,}(?: [A-Z]{2,})*)(?: \([^)]*\))?:\s*/g;
+function turnsOf(line) {
+  const parts = line.split(LABEL), out = [];
+  if (parts[0].trim()) out.push(`CREATOR: ${parts[0].trim()}`);
+  for (let i = 1; i < parts.length; i += 2) {
+    const text = parts[i + 1].trim();
+    if (text) out.push(`${/^(YOU|CREATOR)$/.test(parts[i]) ? 'CREATOR' : 'FRIEND'}: ${text}`);
+  }
+  return out;
 }
 
 const hash = (s) => createHash('sha1').update(s).digest('hex').slice(0, 10);
@@ -34,7 +51,7 @@ export const POST = brandPost(async (req, ctx) => {
   if (!dir) return jsonRes({ error: 'no such ad folder' }, 404);
   if (!lines.length) return jsonRes({ error: 'nothing to voice' }, 400);
   const vdir = join(dir, 'voice'), VOICE = voiceOf(dir);
-  const scripts = (body.hook && lines.length > 1 ? [lines.slice(0, 1), lines.slice(1)] : [lines]).map((ls) => ls.map((l) => `CREATOR: ${l}`).join('\n') + '\n');
+  const scripts = (body.hook && lines.length > 1 ? [lines.slice(0, 1), lines.slice(1)] : [lines]).map((ls) => ls.flatMap(turnsOf).join('\n') + '\n');
   const takes = scripts.map((sc) => `voice-${hash(VOICE + sc)}`);
   const name = takes.length > 1 ? `preview-${hash(takes.join('+'))}` : takes[0], out = join(vdir, `${name}.mp3`);
   const res = () => jsonRes({ p: `outputs/${ad}/voice/${name}.mp3`, v: Math.round(statSync(out).mtimeMs) });

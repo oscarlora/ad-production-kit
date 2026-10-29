@@ -39,9 +39,10 @@ beside you: show a page with the `open_page` tool instead of launching anything.
 - **Workflow** — each ad folder's step bar for its format, inferred from the folder's files and the
   record (`studio/lib/server/workflow.js`). Every ad's bar opens with **Concept**: the
   **CONCEPT** section of the ad's .md (Product, Persona with the awareness stage this ad targets,
-  Angle, Format, Reference; UGC adds Message and For). Then:
+  Angle, Format, Reference; UGC adds Message and For, animation Style and Cast). Then:
   - Image: Prompt · Drafts · Final · Meta copy
-  - Animation and slides: Concept · Script · Voices · Storyboard · Sheets · Frames · Clips · Edit
+  - Animation: Concept · Script · Voice · Sheets · Frames · Clips · Edit
+  - Slides: Concept · Script · Voices · Storyboard · Sheets · Frames · Clips · Edit
   - Song: Concept · Lyrics · Song · Look · Storyboard · Clips · Edit
   - Podcast: Look · Script · Clips · Music · Edit
   - UGC: Profile (only when the ad is for a known creator: `references/profile.md`) · Concept · Script
@@ -49,8 +50,8 @@ beside you: show a page with the `open_page` tool instead of launching anything.
   - Voiceover: Script · Voice · B-roll · Export
   - Other video: Script · Voice · Look · Clips · Music · Edit
 
-  UGC steps show the brief's sections: Concept its Message, For and Format lines and media blocks,
-  Script the LINES TO CAMERA Scene and Line columns (with word count, spoken time and a voice
+  Animation's Concept shows `storyboard.md`'s CONCEPT section; Script the shot table's #, Line and What we see columns, editable, with word count and a voice button (the shots show as cards from Frames on); Voice each take with a pick button (`voice.json`); Sheets each sheet as a card with its prompt. UGC steps show the brief's sections: Concept its Message, For, Format and Reference lines and the media under them,
+  Script the LINES TO CAMERA Scene and Line (or Talking points) columns (with word count, spoken time and a voice
   button), Storyboard every column and the SLIDES / B-ROLL tables, Footage each scene's clip and
   checklist under a delivery and approval summary (**review-ugc-footage**). Every .md shown is a
   page of blocks, editable in place. One block carries one thing: a title is its own bold block

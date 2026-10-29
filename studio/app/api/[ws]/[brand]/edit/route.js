@@ -1,7 +1,7 @@
 // An ad's edit. Body: { ad (its folder name), and one action }: md (saveMd; 409 when it can't merge), comment (saveComment),
-// approve: id, sendBack: { id, text }, decide (decideScene), remove: id, trim (trimClip, returning its undo), mute (muteTrack, the same), restore (restoreEdit) or
+// approve: id, sendBack: { id, text }, decide (decideScene), voice: take (pickVoice), remove: id, trim (trimClip, returning its undo), mute (muteTrack, the same), restore (restoreEdit) or
 // export: plan (startExport). Each is described in lib/server/edit.js.
-import { adDir, approveComment, decideScene, muteTrack, removeComment, restoreEdit, saveMd, saveComment, sendBackComment, startExport, trimClip } from '../../../../../lib/server/edit.js';
+import { adDir, approveComment, decideScene, muteTrack, pickVoice, removeComment, restoreEdit, saveMd, saveComment, sendBackComment, startExport, trimClip } from '../../../../../lib/server/edit.js';
 import { brandPost, jsonRes } from '../../../../../lib/server/http.js';
 
 export const POST = brandPost(async (req, ctx) => {
@@ -14,6 +14,7 @@ export const POST = brandPost(async (req, ctx) => {
     if (body.approve) { approveComment(dir, body.approve); return jsonRes({ ok: true }); }
     if (body.sendBack) { sendBackComment(dir, body.sendBack.id, body.sendBack.text); return jsonRes({ ok: true }); }
     if (body.decide) return jsonRes({ comment: decideScene(dir, body.decide) });
+    if (body.voice) { pickVoice(dir, body.voice); return jsonRes({ ok: true }); }
     if (body.remove) { removeComment(dir, body.remove); return jsonRes({ ok: true }); }
     if (body.trim) return jsonRes(await trimClip(dir, body.trim));
     if (body.mute) return jsonRes(await muteTrack(dir, body.mute));

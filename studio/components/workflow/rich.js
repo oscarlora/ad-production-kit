@@ -110,7 +110,7 @@ function placeCaret(el, at, start, offset) {
 const norm = (s) => String(s || '').trim();
 
 // The editable text. A change from outside replaces it only when it differs from what is typed.
-export default function RichText({ value, onChange, onBlur, onEnter, onEmptyDelete, onMergeBack, offset, mode = 'inline', focus = true, at, start, as: Tag = 'div', className = '' }) {
+export default function RichText({ value, onChange, onBlur, onEnter, onEmptyDelete, onMergeBack, onMergeNext, offset, mode = 'inline', focus = true, at, start, as: Tag = 'div', className = '' }) {
   const ref = useRef(null), mine = useRef(null);
   useLayoutEffect(() => {
     const el = ref.current;
@@ -131,6 +131,7 @@ export default function RichText({ value, onChange, onBlur, onEnter, onEmptyDele
           const [before, after] = splitAtCaret(ref.current, mode);
           if (!before.trim() && after.trim()) { e.preventDefault(); onMergeBack(after.trim()); return; }
         }
+        if (e.key === 'Delete' && onMergeNext && window.getSelection()?.isCollapsed && !splitAtCaret(ref.current, mode)[1].trim()) { e.preventDefault(); onMergeNext(); return; }
         if (e.key !== 'Enter') return;
         if (!e.shiftKey && onEnter) { e.preventDefault(); onEnter(...splitAtCaret(ref.current, mode)); }
         else if (mode === 'inline') { e.preventDefault(); document.execCommand('insertLineBreak'); }

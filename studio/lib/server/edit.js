@@ -109,6 +109,15 @@ export function removeComment(dir, id) {
   rmSync(join(dir, 'comments', `${id}.json`), { force: true });
 }
 
+// The user picks the voiceover take (an animation's Voice step): voice.json { take } (relative to the ad folder), with a
+// comment on the storyboard so the agent retimes it to that take.
+export function pickVoice(dir, take) {
+  const rel = String(take || '');
+  if (!/^(voice|audio)\/[^/\\\0]+\.(mp3|wav|m4a|aac|ogg)$/i.test(rel) || !existsSync(join(dir, rel))) throw new Error('no such voice take');
+  writeFileSync(join(dir, 'voice.json'), JSON.stringify({ take: rel }, null, 2) + '\n');
+  if (existsSync(join(dir, 'storyboard.md'))) saveComment(dir, { file: 'storyboard.md', text: `Picked the voice take ${basename(rel)}: retime the storyboard to it.` });
+}
+
 // The user's review of a footage.json scene: ticks ({ <check>: bool }, merged into theirs) and/or decision ('approved'
 // clears a reshoot, 'reshoot' calls one, null clears it), with an optional comment. A call leaves a comment on the scene,
 // so the agent's review loop hears it.

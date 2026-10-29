@@ -1,5 +1,6 @@
 'use client';
-// The storyboard as a swipeable scroll-snap strip: one card per shot (row, frame, clip takes, generation details).
+// The storyboard as a swipeable scroll-snap strip: one card per shot (row, frame, clip takes, generation details);
+// the sheets as a stack of cards.
 // Media loads lazily: a frame as it nears view, a clip only once played.
 import { Fragment, useEffect, useRef, useState } from 'react';
 import { fileUrl } from '../../lib/client/api.js';
@@ -166,6 +167,24 @@ function ShotCard({ ws, brand, shot }) {
       </div>
     </article>
   );
+}
+
+// A sheet: its image beside how it was generated. Sheets stack; they are references, not a sequence.
+function SheetCard({ ws, brand, sheet }) {
+  const src = fileUrl(ws, brand, sheet.p, sheet.v);
+  return (
+    <article className="sheet" aria-label={sheet.name}>
+      <a className="sheet__media" href={src} target="_blank" rel="noreferrer"><img src={src} alt={sheet.name} loading="lazy" /></a>
+      <div className="sheet__body">
+        <div className="sheet__name">{sheet.name}</div>
+        <GenInfo ws={ws} brand={brand} label="Sheet" gen={sheet.gen} />
+      </div>
+    </article>
+  );
+}
+
+export function Sheets({ ws, brand, sheets }) {
+  return <div className="sheets">{sheets.map((sh) => <SheetCard key={sh.p} ws={ws} brand={brand} sheet={sh} />)}</div>;
 }
 
 export default function Storyboard({ ws, brand, sb }) {

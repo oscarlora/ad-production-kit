@@ -59,7 +59,8 @@ name (`Archivo Black` for a heavier look).
   ("Heavy periods hit 1 in 4 women over 41", not just "1 in 4"), so no words go missing around it.
   It sits where the captions sit unless that covers the face, the product or the shot's key object.
 - **Key words:** the few words that carry the ad take the accent color in the captions (a fourth
-  `color` element on the word), first mention only.
+  `color` element on the word), first mention only: the claim, the turn, the offer ("doesn't
+  nourish", "60% off"), never a sentence's setup ("today's food") and at most one phrase per sentence.
 - A workflow may set its own font and placement (song, slides); these rules still apply.
 - **Brand font** (from `inputs/DESIGN.md`) only when a licensed font file exists in `inputs/media/brand/`: map it in the
   document's `fonts`. Never hunt the web for a brand's commercial font.

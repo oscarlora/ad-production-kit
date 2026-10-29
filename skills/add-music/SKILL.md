@@ -37,13 +37,11 @@ vary the vibe. Under dialogue, prefer instrumental or vocal-light.
 
 ## Levels
 
-- **A bed, not a lead** — the Music track's `volume` about -18 dB under dialogue; a few dB louder
-  only where there's no speech.
-- **Duck under speech** — `node tools/edit-video.mjs duck <edit.json> --track Music --words <transcript>`.
+- **A bed, not a lead** — one flat `volume` on the Music track, about -18 dB under dialogue (lower if the
+  user asks); no ducking, and never lifted into the pauses.
 - **Fades** — `fadeIn` ~0.5 s and `fadeOut` ~1–2 s ending with the video, so the end doesn't sound
   like a cut.
 - **Shape it to the story** — never drop to silence: for a pause on a turn, crossfade (~0.1 s) to a
   low-passed copy of the same track, in sync on its own track, and back to clear on the answer.
   Land the track's strong moments (accents, re-entries; find them on an onset envelope) on the
   turns and the product shot, moving the music only by whole beats at a cut that hides the jump.
-  Lift it ~3 dB at the turn, and to full where no one speaks.

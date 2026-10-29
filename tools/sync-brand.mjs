@@ -12,7 +12,7 @@
 // A public workspace (PUBLIC_BUCKETS in lib/r2.mjs, e.g. Shared) pulls without creds: each push
 // writes <Brand>/.manifest.json for that. It never syncs _custom, which would be public.
 import { readdirSync, readFileSync, existsSync, mkdirSync, writeFileSync, statSync, rmSync } from 'node:fs';
-import { join, relative, dirname } from 'node:path';
+import { join, relative, dirname, resolve } from 'node:path';
 import { loadEnv, inferWorkspace, inferBrand, brandDirFrom, catalogPaths, readRecord, mimeOf, parseArgs, isMedia, hashFile, usage, EDITING, readEditing, sessionId } from './lib/catalog.mjs';
 import { r2FromEnv, r2Public, PUBLIC_BUCKETS, MANIFEST } from './lib/r2.mjs';
 
@@ -24,7 +24,9 @@ const HELP = `sync-brand.mjs — mirror a brand to/from its workspace's R2 bucke
                                                                         never touches an ad folder being edited
   node tools/sync-brand.mjs --push <brand dir> [--originals] [--force]  upload changes and release this session's ad folders;
                                                                         stops on someone's newer work, and leaves out ad
-                                                                        folders another session is editing, unless --force
+                                                                        folders another session is editing, unless --force.
+                                                                        A path under the brand (e.g. one ad folder) pushes only
+                                                                        it, and --force reaches no further
   node tools/sync-brand.mjs --remove <brand dir> <relpath>              delete a file or folder from the bucket that is gone
                                                                         here (renamed or deleted), e.g. outputs/<old ad folder>
   node tools/sync-brand.mjs --presign <brand dir> <id|relpath> [--expires 3600]   presigned GET URL for an original
@@ -124,6 +126,14 @@ function editing(scope) {
 }
 const under = (locks, rel) => locks.find(([pre]) => rel.startsWith(pre));
 
+// The part of the brand a push was pointed at: '' for the brand itself, else a rel path ('outputs/<ad>/').
+function onlyFor(path, dir) {
+  const rel = relOf(dir, resolve(path));
+  if (!rel || rel.startsWith('..')) return '';
+  return existsSync(resolve(path)) && statSync(resolve(path)).isDirectory() ? `${rel}/` : rel;
+}
+const inside = (only, rel) => !only || (only.endsWith('/') ? rel.startsWith(only) : rel === only);
+
 const nfiles = (n) => `${n} file${n === 1 ? '' : 's'}`;
 function deltaSummary(verb, nNew, nUpd, nSame) {
   if (!nNew && !nUpd) return `already up to date — nothing to ${verb === 'pushed' ? 'send' : 'download'} (${nfiles(nSame)})`;
@@ -136,19 +146,21 @@ const report = (scope, line) => console.log(scope.kind === 'brand' ? line : `wor
 const empty = (scope, remote) => scope.kind === 'custom' && !remote.size && !existsSync(scope.dir);
 
 async function push(path, withOriginals, force) {
-  const { r2, scopes, isPublic } = requireR2(path);
+  const { r2, scopes: all, isPublic } = requireR2(path);
+  const only = onlyFor(path, all[0].dir);
+  const scopes = only ? all.slice(0, 1) : all;
   // Plan every scope first so a conflict stops the push before any upload.
   const plans = [];
   for (const scope of scopes) {
     const remote = await remoteByRel(r2, scope);
     if (empty(scope, remote)) continue;
     const seen = readState(scope.dir); // null = never synced → no guard
-    const locks = editing(scope), me = sessionId();
+    const locks = editing(scope).filter(([pre]) => inside(only, pre) || only.startsWith(pre)), me = sessionId();
     const others = force ? [] : locks.filter(([, l]) => l.session !== me && l.session !== 'studio');
     const toSend = []; let same = 0;
     for (const f of selected(scope, withOriginals)) {
       const rel = relOf(scope.dir, f);
-      if (under(others, rel)) continue;
+      if (!inside(only, rel) || under(others, rel)) continue;
       const o = remote.get(rel);
       if (o && await sameContent(f, o)) { same++; continue; }
       toSend.push({ f, rel, isNew: !o });

@@ -7,7 +7,7 @@ description: Assemble and revise a video ad in ADPK's own editor — an edit doc
 
 An ad's edit is one JSON document, `outputs/<ad>/edit.json`. A version that changes only the hook
 (`edit-v2.json`, `edit-v3.json`…) holds just its hook on top of `"base": "edit.json"`, so body changes
-happen once, in `edit.json`; one that differs more (a reframe, **recut-shorts**) is a full copy.
+happen once, in `edit.json` (a music bed that opens the base opens each version too); one that differs more (a reframe, **recut-shorts**) is a full copy.
 Editing marks the ad as yours until you push (sync-brand). Studio's Workflow page shows it live in
 the ad's **Edit** step: preview, timeline, review comments and an Export button. Change the document
 (or replace a media file it uses) and the preview follows within a second. Schema, flags and every subcommand: `node tools/edit-video.mjs --help`.
@@ -22,8 +22,9 @@ the ad's **Edit** step: preview, timeline, review comments and an Export button.
    take goes in whole: `tighten` finds where its speech starts and ends (a transcript's word ends run early).
    Anything that changes over time (zoom, volume, saturation…) takes keyframes.
 3. **Captions:** `captions --words <transcript or song timing>` writes word-timed lines (**caption-video**).
-4. **Check:** `check` (it also flags a cut into speech, which listening misses), and `frames --at …` when you
-   need to see a moment.
+4. **Check:** `check` (it also flags a cut into speech, which listening misses, and starts in the background
+   whatever Studio's preview would otherwise make on first play, so playback never stalls), and `frames --at …`
+   when you need to see a moment. Run it after every change that adds or retimes a clip.
 
 ## Revise: live review
 
@@ -77,10 +78,16 @@ change to V1's.
 - **Cuts and pacing** — shots on the voiceover's lines (`place`); `cut` removes a stretch (a pause,
   a line) from every track and closes the gap, captions and keyframes included. For a real speaker
   (UGC, talking head), `tighten` takes out every breath, lead-in and pause by waveform, guarded by the
-  words; run it once the takes are placed, and again after any retake.
+  words; run it once the takes are placed, and again after any retake. Then find the pauses it left (breaths
+  it took for speech: `silencedetect` on the `audio` mix, over 0.3 s) and `cut` each to ~0.12 s.
 - **B-roll** — never a flash of the talking head under ~0.7 s between two B-roll shots (extend the
-  B-roll instead), no jump cut inside a B-roll shot under ~0.8 s, and no one in it visibly talking.
-  Slow a shot down to use only the moment that fits. Check every product shot for a mirrored label
+  B-roll instead), no jump cut inside a B-roll shot under ~0.8 s, and no one in it visibly talking
+  for long (a beat of product in use is fine). Slow a shot down to use only the moment that fits. A shot
+  goes where its action happens in the story (her bag of bottles as she reaches into it). Stock that
+  illustrates a line can take the top half (`w` 1080, `h` 960) while the speaker's clip moves down to the
+  bottom half (`y` keyframed, held), for that line only. A static stretch (the product held up to the
+  camera through the CTA) gets product-in-use B-roll, one shot per phrase, nothing already shown, keeping
+  the speaker for the last line and the end card. Check every product shot for a mirrored label
   (**review-ugc-footage**) as you place it.
 - **Transitions** — UGC: hard cuts, anything else only on request. Otherwise `transition` on the
   incoming clip: fade for a mood shift, slide, push or wipe for a jump in place or time.
@@ -96,6 +103,10 @@ change to V1's.
 - **Tracking** — a zoom or overlay on something that moves (a label, a jar, a hand) follows it
   frame by frame: `track --clip <name> --at <t> --box x,y,w,h`, with `--follow` for the overlays and
   `--zoom` to zoom the clip onto it.
+- **Hiding** — a competitor's name on screen (a label, a logo) gets a `hide` clip per object (soft
+  pixelation, so it still reads as a bottle; `style: "blur"` when asked), on a track above the footage
+  and below the text, following the object with `track --follow`. Where the tracker loses it (a hand
+  over it), keyframe the box by hand; check every shot it's in on a `frames` sheet, hooks included.
 - **Open and close on a move** — open on a fast push-out (1.2 → 1.0 in ~0.2 s, `ease`), its fastest
   moment on the whoosh's peak; close on a fast zoom (~3×, `track --zoom`) onto the product after the
   last word, centered and above the badge, the offer coming in once the zoom clears the face.
@@ -104,8 +115,8 @@ change to V1's.
 - **Sound** — you choose it: music (**add-music**) and effects (**generate-sfx**); reference a shared
   library file in place (`../../../../Shared/Library/inputs/media/<file>`). An effect earns its place by marking something (a
   move, a reveal, a list item), never as decoration, and goes when what it marks goes or moves (`check` flags one left
-  marking nothing). Time each effect from its peak (**generate-sfx**, Place). `duck` dips a track under speech (`--speaker`
-  for one voice in a transcript); `moves` lists where the picture moves, for effects on actions.
+  marking nothing). Time each effect from its peak (**generate-sfx**, Place). The music sits at one
+  flat level (**add-music**); `moves` lists where the picture moves, for effects on actions.
   A noisy or mumbled voice: **generate-voice** (`isolate`, `patch`).
 - **Text** — hook, lists and end card as `text` / `rect` / `image` clips. Text overlays cut in, no entrance animation, unless the user asks. Everything sits where both
   feeds show it: inside the 4:5 crop (y 285–1635 on 1920) and above the Reels UI, which covers the
@@ -113,10 +124,14 @@ change to V1's.
   blocks at most ~880 px wide — and clear of the face and the product. When it won't all fit, the
   safe zone wins, then the face and product, and size gives way: shrink a graphic before moving it
   out (`check` flags anything outside the zone). No text repeats what other text on screen already
-  says. Captions stay centered
+  says, and each reads on its own (not a lone "ORGANS": "ORGANS = B12 + IRON"). Text that replaces the
+  captions sits in their spot (a list stacking up from it), so the eye never moves; only the hook sits
+  higher. Captions stay centered
   in one spot; while the product is held they may shift only up or down, inside the safe zone, and
   overlap it when it can't be cleared. Other on-screen text replaces the captions for its whole
-  sentence (**caption-video**, Hook). When the speaker lists things, stack them: one line per item with an
+  sentence (**caption-video**, Hook). Break text into lines by hand (`\n`) on its spoken beats, one phrase
+  per line ("Spent more on supplements / than your car insurance? / You need to hear this" is three), the lines of
+  similar length and never one word alone on a line. When the speaker lists things, stack them: one line per item with an
   emoji, in on its word with a soft ding, held to the cut. Small print
   (a results disclaimer) shows only beside the claim it covers, never in the hook, and none in a
   first-person story.

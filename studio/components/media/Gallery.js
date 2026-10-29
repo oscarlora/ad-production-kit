@@ -45,7 +45,7 @@ function Card({ ws, brand, rec, selected, onToggleSel, onOpen, actions, label })
   const pills = [
     ['Open full screen', IcFull, onOpen],
     ['Use as reference', IcLink, () => actions.copyRef([rec.id])],
-    ['Download', IcDl, () => actions.download(rec)],
+    ['Download', IcDl, () => actions.download([rec])],
     ['Copy file name', IcCopy, () => actions.copyName(rec)],
     ['Reveal', IcFolder, () => actions.open(rec, 'reveal')],
   ];
@@ -117,11 +117,15 @@ export default function Gallery({ ws, brand, swipe = false }) {
         toast(rs[0].local ? rs[0].message : ids.length > 1 ? `Copied ${ids.length} reference links` : 'Copied reference link');
       } catch (e) { toast(String(e.message || e)); }
     },
-    download: (rec) => {
-      const a = document.createElement('a');
-      a.href = mediaUrl(ws, brand, rec.file?.name);
-      a.download = rec.file?.name || '';
-      a.click();
+    // One file at a time, a beat apart: clicks in a row start only the first download.
+    download: async (recs) => {
+      for (const [i, rec] of recs.entries()) {
+        if (i) await new Promise((r) => setTimeout(r, 400));
+        const a = document.createElement('a');
+        a.href = `${mediaUrl(ws, brand, rec.file?.name)}&dl=1`;
+        a.download = rec.file?.name || '';
+        a.click();
+      }
     },
     copyName: async (rec) => {
       try { await navigator.clipboard.writeText(rec.file?.name || ''); toast('Copied file name'); } catch {}
@@ -160,7 +164,7 @@ export default function Gallery({ ws, brand, swipe = false }) {
           <>
             <span className="bar__count">{sel.size} selected</span>
             <button type="button" className="btn" onClick={() => actions.copyRef([...sel])}>Use</button>
-            <button type="button" className="btn" onClick={() => eachSelected(actions.download)}>Download</button>
+            <button type="button" className="btn" onClick={() => actions.download(records.filter((r) => sel.has(r.id)))}>Download</button>
             <button type="button" className="btn" onClick={() => eachSelected((r) => actions.open(r, 'reveal'))}>Reveal</button>
             <button type="button" className="btn" onClick={() => setSel(new Set())}>Clear</button>
           </>

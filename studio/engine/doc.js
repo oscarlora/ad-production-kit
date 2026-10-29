@@ -34,7 +34,7 @@ export function val(v, t, dflt) {
 }
 export const keyed = (v) => Array.isArray(v) && Array.isArray(v[0]);
 
-const VISUAL = new Set(['video', 'image', 'text', 'captions', 'rect', 'custom']);
+const VISUAL = new Set(['video', 'image', 'text', 'captions', 'rect', 'hide', 'custom']);
 export const isVisual = (c) => VISUAL.has(c.type);
 export const hasSound = (c) => c.type === 'audio' || (c.type === 'video' && !c.mute);
 
@@ -115,6 +115,9 @@ export function mapTimes(doc, f, skip = new Set()) {
 // edits happen once, in the base. Track keyframes: its own before the body, the base's after. Its other fields
 // override the base's; the base's output is dropped. Each clip carries ORIGIN: [own?, track, clip] (indices in the file it comes from).
 export const ORIGIN = Symbol('origin');
+const BED = Symbol('bed');
+// A sound bed: audio that opens the edit (music from 0), kept whole when the edit is rearranged.
+export const isBed = (c) => !c.lines && (c.at ?? 0) <= 1e-3 && (c.type === 'audio' || /\.(mp3|m4a|wav|aac|ogg|flac)$/i.test(c.src || ''));
 export function compose(raw, base) {
   if (base.base) throw new Error(`${raw.base} has a base itself`);
   const doc = structuredClone(base);
@@ -122,6 +125,7 @@ export function compose(raw, base) {
   if (!starts.length) throw new Error(`${raw.base} has no clip named "${raw.from}" (the version's "from")`);
   const start = Math.min(...starts), own = structuredClone(raw.tracks || []);
   const head = Math.max(0, ...own.flatMap((tr) => (tr.clips || []).map((c) => endOf(c) ?? 0)));
+  // A sound bed that opens the base opens the version too, from its own start, under the new hook.
   // The base before `from` goes: keyframes hold the value they had there, clips crossing it start there.
   const cutKeys = (h, k, v) => {
     const i = v.findLastIndex(([t]) => t <= start);
@@ -133,6 +137,7 @@ export function compose(raw, base) {
       c[ORIGIN] = [false, ti, ci];
       const e = endOf(c), at = c.at ?? 0;
       if (e != null && e <= start + 1e-3) return [];
+      if (isBed(c)) { c[BED] = true; return [c]; }
       if (at < start) {
         if (c.src) c.in = r3((c.in ?? 0) + (start - at) * (c.rate ?? 1));
         if (c.lines) c.lines = c.lines.filter((l) => l.end > start);
@@ -143,6 +148,7 @@ export function compose(raw, base) {
     });
   });
   mapTimes(doc, (t) => r3(t - start + head));
+  for (const tr of doc.tracks) for (const c of tr.clips) if (c[BED]) { c.at = 0; delete c[BED]; }
   own.forEach((otr, oi) => {
     (otr.clips ||= []).forEach((c, ci) => { c[ORIGIN] = [true, oi, ci]; });
     let tr = doc.tracks.find((x) => x.name === otr.name);

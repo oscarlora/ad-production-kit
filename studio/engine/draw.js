@@ -275,6 +275,32 @@ function drawRect(ctx, c, t, env) {
   });
 }
 
+// Hides what the tracks below drew inside a box (a competitor's label, a face): x, y (center), w, h; style
+// pixelate (cells of `cell` px, default 16: soft, the object still reads) or blur (`amount` px, default 30).
+function drawHide(ctx, c, t, env) {
+  const k = env.k, w = val(c.w, t, 200), h = val(c.h, t, 200);
+  const sx = Math.max(0, Math.round((val(c.x, t, env.W / 2) - w / 2) * k)), sy = Math.max(0, Math.round((val(c.y, t, env.H / 2) - h / 2) * k));
+  const sw = Math.min(ctx.canvas.width - sx, Math.round(w * k)), sh = Math.min(ctx.canvas.height - sy, Math.round(h * k));
+  if (sw <= 0 || sh <= 0) return;
+  ctx.save();
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  if (c.style === 'blur') {
+    ctx.beginPath();
+    ctx.rect(sx, sy, sw, sh);
+    ctx.clip();
+    ctx.filter = `blur(${val(c.amount, t, 30) * k}px)`;
+    ctx.drawImage(ctx.canvas, 0, 0);
+  } else {
+    const cell = val(c.cell, t, 16) * k, tw = Math.max(1, Math.round(sw / cell)), th = Math.max(1, Math.round(sh / cell));
+    const small = (env.scratch.hide ??= new OffscreenCanvas(1, 1));
+    small.width = tw; small.height = th;
+    small.getContext('2d').drawImage(ctx.canvas, sx, sy, sw, sh, 0, 0, tw, th);
+    ctx.imageSmoothingEnabled = false;
+    ctx.drawImage(small, 0, 0, tw, th, sx, sy, sw, sh);
+  }
+  ctx.restore();
+}
+
 // ---- transitions: (ctx, paintA, paintB, p 0..1, env, params) ----
 const DIRS = { left: [-1, 0], right: [1, 0], up: [0, -1], down: [0, 1] };
 function moveBy(ctx, env, dir, amt, paint) {
@@ -360,6 +386,7 @@ export function drawFrame(ctx, doc, t, frames, env) {
     else if (c.type === 'text') drawText(x, c, t, env);
     else if (c.type === 'captions') drawCaptions(x, c, t, env);
     else if (c.type === 'rect') drawRect(x, c, t, env);
+    else if (c.type === 'hide') drawHide(x, c, t, env);
     else if (c.type === 'custom') env.fx?.layers?.[c.draw]?.(x, c, t, env);
   };
   for (let i = doc.tracks.length - 1; i >= 0; i--) {

@@ -536,6 +536,8 @@ kbd { font: inherit; font-size: var(--text-xs); color: var(--muted); background:
 .flow-tile .player__screen > video { height: auto; max-height: 70vh; }
 .flow-tile figcaption, .flow-audio figcaption { font-size: var(--text-xs); color: var(--muted); margin: 6px 0 2px; overflow-wrap: anywhere; }
 .flow-audio .player { width: min(100%, 28rem); }
+.flow-audio__row { display: flex; align-items: center; gap: 8px; }
+.flow-audio__row .chip svg { width: 14px; height: 14px; }
 .flow-link { font-size: var(--text-sm); }
 
 /* Collapsed text (prompts, scripts) */
@@ -609,6 +611,7 @@ kbd { font: inherit; font-size: var(--text-xs); color: var(--muted); background:
 .mde tbody .mde__gutter + .mde__cell { white-space: nowrap; } /* the row's label (Hook 1, Body 10) */
 .mde__cell:hover, .mde .mde__cell[data-lit]:not(.is-editing) { background: var(--fill-soft); }
 .mde tr[data-sel] > .mde__cell, .mde .mde__cell[data-sel] { background: var(--fill); }
+.mde__table[data-rows] ::selection { background: transparent; } /* rows being drag-selected show as rows, not text */
 /* The cell being edited floats a rounded frame a little past its edges, so the text has room without moving. */
 .mde__cell.is-editing { position: relative; z-index: 1; }
 .mde__cell.is-editing::before { content: ""; position: absolute; inset: -4px -6px; z-index: -1; border-radius: var(--radius-sm); background: var(--bg); box-shadow: 0 0 0 1.5px var(--fg); pointer-events: none; }
@@ -713,6 +716,19 @@ kbd { font: inherit; font-size: var(--text-xs); color: var(--muted); background:
 .sb-card__body { display: flex; flex-direction: column; gap: 10px; padding: 12px; }
 .sb-on .eyebrow { margin-right: 4px; }
 
+/* Sheets: stacked cards, the image beside its generation details */
+.sheets { display: flex; flex-direction: column; gap: 16px; }
+.sheet {
+  display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); align-items: start;
+  border-radius: var(--radius); overflow: hidden; background: var(--bg); box-shadow: var(--shadow-border);
+  font-size: var(--text-sm); color: var(--muted-emphasis);
+}
+.sheet__media { display: block; background: var(--media-bg); }
+.sheet__media img { display: block; width: 100%; height: auto; }
+.sheet__body { display: flex; flex-direction: column; gap: 10px; padding: 12px; min-width: 0; }
+.sheet__name { font-weight: 500; color: var(--fg); }
+@media (max-width: 760px) { .sheet { grid-template-columns: minmax(0, 1fr); } }
+
 /* Shot number and time as pill marks; the shot's lines as icon rows */
 .sb-fields { display: flex; flex-direction: column; gap: 8px; }
 .sb-fields__row { display: flex; gap: 6px; }
@@ -769,12 +785,15 @@ kbd { font: inherit; font-size: var(--text-xs); color: var(--muted); background:
 .ed__box--draft { border-style: dashed; }
 .ed__compose { position: absolute; width: 55%; z-index: 2; cursor: auto; }
 .ed__compose textarea { width: 100%; font: inherit; font-size: var(--text-sm); line-height: 1.45; color: var(--fg); background: var(--bg); border: 0; border-radius: var(--radius-sm); padding: 8px 10px; resize: none; outline: none; box-shadow: var(--shadow-float); }
+/* A reply being written in a thread: the user's next bubble (.ft-msg--you), not a floating box. */
+.ed__compose.ft-compose--bubble { position: static; width: 85%; }
+.ft-compose--bubble textarea { background: var(--fill-strong); box-shadow: none; padding: 6px 10px 7px; border-radius: var(--radius); border-bottom-right-radius: var(--radius-sm); }
 .ed__play { width: 28px; height: 28px; flex: none; display: grid; place-items: center; border: 0; border-radius: 50%; background: var(--fg); color: var(--bg); cursor: pointer; transition: transform var(--dur-press) var(--ease-out); }
 .ed__play:active { transform: scale(0.94); }
 .ed__play svg { width: 13px; height: 13px; }
 .ed__clock { font-size: var(--text-xs); color: var(--fg); font-variant-numeric: tabular-nums; white-space: nowrap; }
 .ed__clock span { color: var(--muted); }
-.ed__side { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.ed__side { display: flex; flex-direction: column; gap: 12px; min-width: 0; height: calc(var(--ed-h) - 20px); padding-bottom: calc(var(--page-pad) - 4px); } /* 20px: the panel's top padding; the bottom gap matches the sides (the add row adds 4px) */
 .ed__side > :not(.ed__head, .ed__comments) { max-width: 36rem; }
 /* A bar like the top bar: from the preview's line to the window's edge, a hairline under it */
 .ed__head { display: flex; align-items: center; gap: 8px; height: var(--bar-h); margin: -20px calc(-1 * var(--page-pad)) 0 -24px; padding: 0 var(--page-pad) 0 24px; border-bottom: 1px solid var(--line); }
@@ -808,6 +827,10 @@ kbd { font: inherit; font-size: var(--text-xs); color: var(--muted); background:
 .ed-comment .ft-compose { margin-top: 0; }
 textarea.ed__add { display: block; width: 100%; min-height: 36px; padding: 8px 40px 8px 10px; resize: none; font: inherit; font-size: var(--text-sm); background: var(--bg); }
 .ed__add-row { position: relative; }
+/* In the editor the list fills the side's height and the add field stays pinned at its bottom. */
+.ed__side > .ed__comments { flex: 1; min-height: 0; max-height: none; }
+.ed__side .ed__add-row { position: sticky; bottom: -4px; margin-top: auto; padding: 8px 0 4px; background: var(--bg); }
+.ed__side .ed__send { bottom: 10px; }
 .ed__send { position: absolute; right: 6px; bottom: 6px; width: 26px; height: 26px; padding: 0; border-radius: 50%; }
 .ed__send svg { width: 14px; height: 14px; }
 

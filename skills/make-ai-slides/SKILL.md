@@ -40,7 +40,7 @@ Each column takes the simplest answer that reinforces the line:
 - **What we see:** one idea per slide: a short heading, the picture, a few labels. Show one thing
   at a time; a second idea gets its own slide. Literal means
   literal: "bloating, gone" is a belly deflating. Apply **make-ai-animation**
-  step 4's one-story rules across the whole board before any frame.
+  step 2's one-story rules across the whole board before any frame.
 - **What moves:** the thing being said, on its word, in a way that fits it (a process bounces each
   step as it's named). No motion for its own sake. Only things already
   drawn move; text never moves, appears or changes; nothing turns into something else; nothing new
@@ -58,7 +58,7 @@ wherever the line allows; the examples above aren't defaults.
 ## 5. Frames
 
 Frame 1 first; the chosen take locks the look. Make a sheet for any recurring
-character (**make-ai-animation** step 5), then generate the rest in parallel, each with frame 1 as
+character (**make-ai-animation** step 4), then generate the rest in parallel, each with frame 1 as
 reference 1, plus the sheet or the real product (`sheets/product.png`, per **write-prompt**'s product
 rules):
 

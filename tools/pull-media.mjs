@@ -7,7 +7,9 @@
 import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, copyFileSync, writeFileSync, renameSync, rmSync } from 'node:fs';
 import { join, basename, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
-import { inferWorkspace, parseArgs, isMedia, findBin, have, catalogPaths, usage, downloadFile, extForMime } from './lib/catalog.mjs';
+import { tmpdir } from 'node:os';
+
+import { inferWorkspace, parseArgs, isMedia, findBin, have, catalogPaths, usage, downloadFile, extForMime, warmPreviews } from './lib/catalog.mjs';
 import { driveToken, driveApi, hasDriveCreds, listTree, downloadDriveFile, readDriveSources, FOLDER_MIME } from './lib/drive.mjs';
 
 // A Drive file named without its extension ("Copy of ad") gets it from its mime type.
@@ -107,6 +109,7 @@ async function pullAir(source, out, { dryRun } = {}) {
   for (const c of clips) {
     const name = `${(c.importedName || c.title || c.id).trim()}.${(c.ext || 'bin').toLowerCase()}`;
     if (!isMedia(name) || !c.assets?.original) { console.error(`  skip ${name}: not media`); continue; }
+    if (existsSync(join(out, name)) && statSync(join(out, name)).size === c.size) continue; // a re-run fetches only what's missing
     if (dryRun) { console.log(`  would download ${name} (${(c.size / 1e6).toFixed(1)} MB)`); continue; }
     const file = uniqueName(out, name);
     try { await downloadFile(c.assets.original, join(out, file)); } catch (e) { console.error(`  ✗ ${name}: ${e.message}`); continue; }
@@ -166,4 +169,6 @@ if (!a['dry-run']) {
   const file = join(resolve(out), '.links.json');
   if (Object.keys(links).length) writeFileSync(file, JSON.stringify({ ...(existsSync(file) && JSON.parse(readFileSync(file, 'utf8'))), ...links }, null, 2));
   console.log(`pulled ${n} file${n === 1 ? '' : 's'} → ${resolve(out)}`);
+  // Footage for an edit: start Studio's light preview copies now, so playback is smooth when the edit opens.
+  if (n && !resolve(out).startsWith(tmpdir())) { warmPreviews([resolve(out)]); console.log('making Studio\'s preview copies in the background'); }
 }

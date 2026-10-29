@@ -79,7 +79,7 @@ and nav buttons. A dashed border means empty or a draft.
   in place (bold, italic, links, lists), framed by a hairline (a cell by a 1.5px `--fg` frame with `--radius-sm`,
   floating a little past its edges); a labeled line edits as its title and its text; only comments edit as raw text. Grips (`--faint`) sit in a margin outside the content and show on hover: left of a block; for a table, the
   hovered column's in a strip above the header, the hovered row's in a left gutter.
-  A 2px `--fg` line marks where a drag drops; hovering a grip shades its row or column. A clicked grip selects its block, row or column (`--fill`) and opens a
+  A 2px `--fg` line marks where a drag drops; hovering a grip shades its row or column. A clicked grip selects its block, row or column (`--fill`; a drag across rows or Shift+click selects several) and opens a
   floating menu (`--shadow-float`), Delete last under a hairline. A script table ends with its word count and spoken time
   (estimated, or the voice take's own length once there is one), each after a muted icon; the hook in that sentence is
   a bold word that opens a list; one mini button on its
@@ -94,7 +94,7 @@ and nav buttons. A dashed border means empty or a draft.
   archive icon (no background) that shows the approved ones, then one bordered card per comment (no fill): what it's
   on (its number and time, or the quote), its stage as a dot and word (Waiting, Working on it, Ready to review), and
   its rounds as a thread. Only a comment ready to review gets buttons, as mini buttons on the right: Approve (primary), Watch
-  change, Send back (asks what's still off); Edit (while waiting) and Delete show on hover. Hovered or pointed at from
+  change, Send back (what's still off is written as the user's next bubble in the thread); Edit (while waiting) and Delete show on hover. Hovered or pointed at from
   the timeline, a card lifts; picked, it gets a dark ring. The editor ends the list with an always-there Add a comment
   field (N focuses it), its round primary send arrow inside on the right, dimmed while empty. Dragging above the
   timeline's ruler picks a stretch for it: a faint `--fg` band with hairline edges over every track, its edges snapping
