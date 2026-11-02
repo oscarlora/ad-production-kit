@@ -5,6 +5,7 @@ import { normalize, settle } from './doc.js';
 import { drawFrame, needs } from './draw.js';
 import { Grader } from './grade.js';
 import { Media, loadFonts } from './media.js';
+import { mgKit } from './mg.js';
 import { motionKit } from './motion.js';
 
 // canvas: where frames are drawn (its width sets the scale). url(src): fetchable URL of a doc path.
@@ -26,8 +27,8 @@ export async function createEngine({ canvas, url, light = false }) {
     grader ??= new Grader();
     doc = d;
     env?.motion.dispose();
-    env = { W: d.W, H: d.H, fps: d.fps, k: canvas.width / d.W, cw: canvas.width, ch: canvas.height, grader, fx, scratch: {}, motion: motionKit() };
-    const key = JSON.stringify([d.loudness, d.tracks.map((tr) => [tr.mute, tr.volume, tr.clips.map((c) => [c.type, c.src && url(c.src), c.at, c.end, c.in, c.rate, c.mute, c.volume, c.fadeIn, c.fadeOut, c.loop])])]);
+    env = { W: d.W, H: d.H, fps: d.fps, k: canvas.width / d.W, cw: canvas.width, ch: canvas.height, grader, fx, scratch: {}, motion: motionKit(), mg: mgKit() };
+    const key = JSON.stringify([d.loudness, d.sounds, d.tracks.map((tr) => [tr.mute, tr.volume, tr.clips.map((c) => [c.type, c.src && url(c.src), c.at, c.end, c.in, c.rate, c.mute, c.volume, c.fadeIn, c.fadeOut, c.loop, c.beats])])]);
     if (key !== audioKey) { sounds = null; audioKey = key; audio().catch(() => {}); } // decode ahead of play
     return d;
   }

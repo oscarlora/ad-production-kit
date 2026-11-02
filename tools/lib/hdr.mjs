@@ -52,7 +52,7 @@ export function toneFilter(kind, how = toneMethod()) {
 // Light on a laptop: decode and encode on the Mac's media engine (VideoToolbox) when there is one, else libx264
 // on 4 threads; the tone-map filters on 2; the whole job at the lowest CPU priority (sdrSource).
 export const sdrCmd = (file, out, kind = kindOf(file)) => ['ffmpeg', ['-y', '-v', 'error', ...(videoToolbox() ? ['-hwaccel', 'videotoolbox'] : ['-threads', '4']),
-  '-filter_threads', '2', '-i', file, '-map', '0:v:0', '-map', '0:a?', '-vf', toneFilter(kind),
+  '-filter_threads', '2', '-i', file, '-map', '0:v:0', '-map', '0:a:0?', '-vf', toneFilter(kind),
   ...(videoToolbox() ? ['-c:v', 'h264_videotoolbox', '-q:v', '70'] : ['-c:v', 'libx264', '-threads', '4', '-preset', 'veryfast', '-crf', '16']),
   '-g', '30', '-pix_fmt', 'yuv420p', '-color_primaries', 'bt709', '-color_trc', 'bt709', '-colorspace', 'bt709', '-color_range', 'tv',
   '-c:a', 'copy', '-movflags', '+faststart', out]];

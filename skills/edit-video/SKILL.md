@@ -45,7 +45,8 @@ they come:
    change of wording, color or volume needs no sheet. A change to what's heard: `audio --from --to
    --transcribe` on the changed stretch, never an export.
 4. `comments outputs/<ad> --done <id> --reply "<what changed, in a few words>" --span <from>-<to>`
-   (the changed stretch, which Studio's Watch change button plays). The user watches it and approves
+   (the changed stretch, which Studio's Watch change button plays), as soon as its change lands, even
+   when it was settled in chat; until then Studio shows it as being worked on. The user watches it and approves
    it, which archives it, or sends it back: it comes back open with what's still off, the earlier
    rounds in its `history`.
 5. Start the wait again.
@@ -70,7 +71,7 @@ For talking-head or UGC footage, settle this first:
 ## What to reach for
 
 Work in this order, since each step shifts the timing of the ones after it: clips and fixes,
-`tighten`, speed (UGC speech plays at 1.15×, every time on the timeline rescaled with it), overlays
+`tighten`, speed (UGC speech plays at 1.2×, every time on the timeline rescaled with it), overlays
 and zooms, sound effects. A hook version (`edit-v2.json`…) owns its hook clips: copy V1's opening
 settings into it (the push-out, the whoosh's trim, the hook text's position) and recheck after each
 change to V1's.
@@ -79,10 +80,15 @@ change to V1's.
   a line) from every track and closes the gap, captions and keyframes included. For a real speaker
   (UGC, talking head), `tighten` takes out every breath, lead-in and pause by waveform, guarded by the
   words; run it once the takes are placed, and again after any retake. Then find the pauses it left (breaths
-  it took for speech: `silencedetect` on the `audio` mix, over 0.3 s) and `cut` each to ~0.12 s.
+  it took for speech: `silencedetect` on the `audio` mix, over 0.3 s, at ~24 dB under its speech level, never a
+  fixed level: the mix is loudness-normalized) and `cut` each to ~0.12 s. A soft last sound after a tiny gap (the "ss" of "moodiness") can fall outside a line's end: check each line's tail with a high-pass (~3 kHz) and extend to keep it. To drop a word mid-line, cut from
+  the quiet after the word before it to the closed mouth just before the next word's release (10 ms loudness
+  steps show both), never inside sounds that run together, and from a take where the word stands apart if
+  one has it; keep both sides in the same take, check by ear, and punch in ~1.2× at the cut, since a smaller
+  step reads as a jump.
 - **B-roll** — never a flash of the talking head under ~0.7 s between two B-roll shots (extend the
   B-roll instead), no jump cut inside a B-roll shot under ~0.8 s, and no one in it visibly talking
-  for long (a beat of product in use is fine). Slow a shot down to use only the moment that fits. A shot
+  for long (a beat of product in use is fine). Slow a shot down to use only the moment that fits. A take starts on its action, never on the lead-in (an empty frame before she walks in, a blank look, eyes off camera): pick each shot's `in` from a sheet across the whole clip, never a guessed offset, and check its first second on a sheet. A shot
   goes where its action happens in the story (her bag of bottles as she reaches into it). Stock that
   illustrates a line can take the top half (`w` 1080, `h` 960) while the speaker's clip moves down to the
   bottom half (`y` keyframed, held), for that line only. A static stretch (the product held up to the
@@ -91,14 +97,16 @@ change to V1's.
   (**review-ugc-footage**) as you place it.
 - **Transitions** — UGC: hard cuts, anything else only on request. Otherwise `transition` on the
   incoming clip: fade for a mood shift, slide, push or wipe for a jump in place or time.
-- **Zooms** — plan them all before keyframing any: list the key phrases with their times, then give
-  each shot one move, checking the shots on either side so moves alternate: still, a slow push-in
-  (~1.06 across the shot; suits a question that builds tension), or a fast hit (in ~0.1 s) on the
-  start of a key *phrase* of 2–5 words, held to the cut. A hit needs about a second before the cut,
+- **Zooms** — plan them all before keyframing any: list the sentences and key phrases with their times, then give
+  each sentence one move, set on the track's `transform` so a cut inside the sentence keeps it running
+  (a move never changes mid-sentence). Alternate type and depth (1.1–1.3) from sentence to sentence:
+  still, a hard punch (a set scale from the sentence's first frame), a slow push-in (~1.06–1.1 across
+  the sentence; suits a question that builds tension), or a fast hit (in ~0.1 s) on the
+  start of a key *phrase* of 2–5 words, held to the sentence's end. A hit needs about a second before the cut,
   else it snaps back and reads as a glitch; a zoom-out happens only on a cut, never mid-shot. A
   phrase that names a motion ("up and down") can take a literal camera move: frame that shot a little
   tighter from its first frame so the move has room without a visible zoom. Keyframe `scale` with an
-  `origin` on the subject, on one clip or on the track's `transform` across cuts. None during an
+  `origin` on the subject. None during an
   on-screen list; text never rides a zoom.
 - **Tracking** — a zoom or overlay on something that moves (a label, a jar, a hand) follows it
   frame by frame: `track --clip <name> --at <t> --box x,y,w,h`, with `--follow` for the overlays and
@@ -120,10 +128,11 @@ change to V1's.
   A noisy or mumbled voice: **generate-voice** (`isolate`, `patch`).
 - **Text** — hook, lists and end card as `text` / `rect` / `image` clips. Text overlays cut in, no entrance animation, unless the user asks. Everything sits where both
   feeds show it: inside the 4:5 crop (y 285–1635 on 1920) and above the Reels UI, which covers the
-  bottom ~35% (so no text below y ~1250), with room to spare — about 90 px from every edge, text
-  blocks at most ~880 px wide — and clear of the face and the product. When it won't all fit, the
+  bottom ~35% (so no text below y ~1250), with room to spare — about 90 px inside the zone on every
+  side (no text above y ~375), text blocks at most ~880 px wide (a hook may run a little wider, ~960 px, to stay at 3 lines without shrinking) — and clear of the face and the product. When it won't all fit, the
   safe zone wins, then the face and product, and size gives way: shrink a graphic before moving it
-  out (`check` flags anything outside the zone). No text repeats what other text on screen already
+  out (`check` flags anything outside the zone). Never zoom or shift a shot to make room for text;
+  move the text (over the legs, low in the zone) instead. No text repeats what other text on screen already
   says, and each reads on its own (not a lone "ORGANS": "ORGANS = B12 + IRON"). Text that replaces the
   captions sits in their spot (a list stacking up from it), so the eye never moves; only the hook sits
   higher. Captions stay centered
@@ -132,15 +141,21 @@ change to V1's.
   sentence (**caption-video**, Hook). Break text into lines by hand (`\n`) on its spoken beats, one phrase
   per line ("Spent more on supplements / than your car insurance? / You need to hear this" is three), the lines of
   similar length and never one word alone on a line. When the speaker lists things, stack them: one line per item with an
-  emoji, in on its word with a soft ding, held to the cut. Small print
-  (a results disclaimer) shows only beside the claim it covers, never in the hook, and none in a
-  first-person story.
+  emoji (a person in it matches the viewer: a woman for a women's ad), in on its word with a soft ding, held to the cut. Small print
+  (a results disclaimer) sits at the very bottom edge, the one thing allowed outside the safe zone, and shows only beside the claim it covers, never in the hook, and none in a
+  first-person story. Text marks facts, lists and proof; the speaker's own experience ("my skin hasn't
+  looked this calm") stays in the captions, since a graphic over it reads as an ad. Cards and
+  stickers (a review, benefit pills) look like the platform's native stickers: flat, no shadow, one
+  corner radius and fill for all of them, each thing in its own box (benefits apart from the review).
+  The hook text names the problem as the viewer pictures it ("breaking out like you're 14 again"),
+  not a summary of it.
 - **Short cuts** — more ads from the same footage, under 30 s: **recut-shorts**.
 - **Other placements** — `reframe --size 1080x1350` (4:5) or `1080x1080` into a new version, then
   check its text on a `frames` sheet.
 - **Motion graphics and anything else** — the ad's own `fx.js` (custom layers, transitions, animations;
-  the contract is in `studio/engine/draw.js`), one file with no imports (Studio loads it alone). A layer
-  animates with `env.motion`: `timeline(c, t, build)` for a GSAP timeline, `three(ctx, c, t, env, setup)` for
+  the contract is in `studio/engine/draw.js`; a whole coded video: **make-motion-graphics**), one file with
+  no imports (Studio loads it alone). A layer draws with `env.mg` (`studio/engine/mg.js`) and animates with
+  `env.motion`: `timeline(c, t, build)` for a GSAP timeline, `three(ctx, c, t, env, setup)` for
   a Three.js scene in the clip's box. Both are posed for the exact frame, so the preview follows a save
   within a second and the export matches; check moments with `frames`. Something a second ad needs moves
   into the engine.

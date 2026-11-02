@@ -48,7 +48,7 @@ name (`Archivo Black` for a heavier look).
 - **Karaoke / lyric:** `active` styles the word being said (`color`, `scale` 1.2–1.3), `upcoming`
   the words still to come (`opacity` 0.5; 0 reveals them word by word); `enter: "pop"` per line.
 - **Hook** (the opening on-screen line): a `text` clip in the caption style, no entrance animation,
-  at most 2 lines (smaller text, or trimmed wording, before a third), `{braces}` around the whole phrase
+  at most 2 lines: the spoken line cut to its gist ("Women in their 40s, 50s, even 60s are struggling…" → "Women 40–60 are struggling"), then smaller text, before a third, `{braces}` around the whole phrase
   that carries the message in the accent color ("{my belly just keeps growing}", not just its tail; a
   list as one span, commas and "and" included), ideally its own line. It sits above the
   speaker's head when there's room inside the safe area (**edit-video**, Text), else just under the

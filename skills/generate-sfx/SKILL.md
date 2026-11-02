@@ -34,6 +34,10 @@ media library (**catalog-media**, `--generated`); one-off cues stay in the ad's 
 
 ## Place
 
+Pick a library sound by its shape, not its name or description (both can be wrong): from the same RMS
+envelope, a pop or click is one transient under ~0.15 s with no build-up; a whoosh rises over 0.2 s or
+more. When the user names the sound they want, offer the matching candidates before generating one.
+
 Each effect is an audio clip on the edit document's SFX track (**edit-video**), timed from its
 waveform: find where it peaks (an RMS envelope in 25 ms steps) and land that peak on the action's
 fastest moment (an `ease` move peaks mid-way); trim its silent lead with `in`. `node tools/edit-video.mjs moves <edit.json> --from <s> --to <s>` lists where the

@@ -15,10 +15,31 @@ function automate(param, fn, a, b, when, keyedValue) {
   param.setValueCurveAtTime(curve, when, Math.max(STEP, b - a));
 }
 
+// A clip's beats, { name: [t (s into the clip), sound, dB?] }, play doc.sounds[sound] (a path, or { src, volume, dur })
+// on its track from where the sound first gets loud, so the hit lands on the beat; fx layers read the same times.
+const beatClips = (doc, tr) => tr.clips.flatMap((c) => Object.entries(c.beats || {}).flatMap(([name, [t, s, volume = 0]]) => {
+  const def = s && doc.sounds?.[s], snd = typeof def === 'string' ? { src: def } : def;
+  if (!snd?.src) return [];
+  const at = c.at + t;
+  return [{ id: `${c.id}~${name}`, type: 'audio', src: snd.src, at, end: at + (snd.dur ?? 30), in: 0, rate: 1, volume: (snd.volume ?? 0) + volume, fadeOut: snd.dur ? 0.1 : 0, track: tr, onset: true }];
+}));
+const onsets = new WeakMap();
+function onsetOf(buf) {
+  if (!onsets.has(buf)) {
+    const x = buf.getChannelData(0);
+    let peak = 0;
+    for (let i = 0; i < x.length; i++) peak = Math.max(peak, Math.abs(x[i]));
+    const i = x.findIndex((v) => Math.abs(v) > peak * 0.1);
+    onsets.set(buf, Math.max(0, i - buf.sampleRate * 0.005) / buf.sampleRate); // 5 ms before, to keep the attack
+  }
+  return onsets.get(buf);
+}
+
 // Clips that sound, with their decoded buffers; `incomplete` when a file failed to load (worth another try).
 export async function soundClips(doc, media, ctx) {
-  const clips = doc.tracks.filter((tr) => !tr.mute).flatMap((tr) => tr.clips.filter(hasSound));
+  const clips = doc.tracks.filter((tr) => !tr.mute).flatMap((tr) => [...tr.clips.filter(hasSound), ...beatClips(doc, tr)]);
   const bufs = await Promise.all(clips.map((c) => media.sound(c.src, ctx, c.rate)));
+  clips.forEach((c, i) => { if (c.onset && bufs[i]) c.in = onsetOf(bufs[i]); });
   const out = clips.map((c, i) => ({ c, buf: bufs[i] })).filter((x) => x.buf);
   out.incomplete = bufs.includes(undefined);
   return out;

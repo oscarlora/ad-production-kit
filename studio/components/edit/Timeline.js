@@ -14,7 +14,7 @@ import Wave from '../Wave.js';
 const pct = (x, dur) => `${(x / dur) * 100}%`;
 const base = (src) => String(src).split('/').pop().replace(/\.[^.]+$/, '');
 // A text block shows its words (accent marks {…|color} dropped), anything else its name or file.
-const labelOf = (c) => (c.type === 'text' ? String(c.text).replace(/\{([^}|]*)(\|[^}]*)?\}/g, '$1').replace(/\s*\n\s*/g, ' ') : c.name || (c.src ? base(c.src) : c.type));
+const labelOf = (c) => (c.type === 'text' ? String(c.text).replace(/\{([^}|]*)(\|[^}]*)?\}/g, '$1').replace(/\s*\n\s*/g, ' ') : c.name || (c.src ? base(c.src) : c.type === 'custom' ? [c.draw, c.n].filter((x) => x != null).join(' ') : c.type));
 const SNAP = 8;
 // Every block edge (clips and caption lines), for a dragged stretch to snap to.
 const edgesOf = (doc) => [0, doc.duration || 0, ...doc.tracks.flatMap((tr) => tr.clips.flatMap((c) => (c.lines ? c.lines.flatMap((l) => [l.at, l.end]) : [c.at, c.end])))];

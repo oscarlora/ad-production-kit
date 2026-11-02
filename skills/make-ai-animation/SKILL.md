@@ -152,6 +152,8 @@ follow **write-prompt**'s "How a model reads a prompt".
   camera side, eyelines, wardrobe, props, light) and against step 2's one-story rules, and flag what's
   off to the user.
 - No text beyond prop labels and the product.
+- A grid sheet as a reference can leak its panel line into the frame: ask for "one single continuous
+  picture from one camera".
 
 ## 6. Clips
 
@@ -216,7 +218,8 @@ Video, Voice, Music (**add-music**), SFX.
 
   It finds each clip's real cuts and fits every shot to its line on the Video track (slowed, or sped
   up to 1.35×, trimmed beyond that); check its shot-count warnings by eye. `sfx.wav` (the clips' own
-  sound, cut the same way) goes on the SFX track at 0 dB; extra effects: **generate-sfx**. When an action still lands off its word, find it (`edit-video.mjs moves`) and
+  sound, cut the same way) goes on the SFX track at 0 dB, after a Gemini audit for what the clips invent
+  despite the prompt (a yawn, a chime melody): mute those stretches; extra effects: **generate-sfx**. When an action still lands off its word, find it (`edit-video.mjs moves`) and
   retime the still stretches between actions, never the actions.
 - **Dialogue: sound design** treats the film as one place heard from different spots. First audit
   every clip's sound with Gemini (`generateJSON` in `tools/lib/analyze.mjs`, as **catalog-media**

@@ -17,7 +17,7 @@ Decide everything; never leave a choice to the model (no "water or can").
   the label. In a stylized world (stop-motion, 3D), the real product photo still sets the label: ask
   only for the scene's light and material on it. A generated product sheet is never a reference: the
   video workflows crop the real product from a store photo into the ad's `sheets/product.png`.
-- **A product held in a hand needs an in-hand reference.** Add a photo of it held in a hand (**search-media**), cropped to the hand and product (a face in it takes over the character), and tell the model to match that product-to-hand size; the packshot alone gets the scale wrong.
+- **A product held in a hand needs an in-hand reference.** Add a photo of it held in a hand (**search-media**), cropped to the hand and product (a face in it takes over the character), and tell the model to match that product-to-hand size; the packshot alone gets the scale wrong. What comes out of it (capsules, gummies, powder) gets its own real close-up too, or the model invents it.
 - **Each generation is stateless.** Describe the final image, never an edit of a previous attempt (no "don't do X" caveats about a prior output). Hard requirements (element counts, "natural undistorted proportions", single image) go in the prompt's constraints. To fix an ad, rebuild the whole prompt fresh; never add product-appearance or dimension language to force a fix.
 - **Revisions regenerate — never edit a previous render.** For any revision (ad, frame, clip), fold the change into the prompt that made it (an ad's is in its record) and generate fresh with the original refs. No image-to-image edit pass on a prior render, and don't ask edit-vs-regenerate (image edits stay fine for preparing base photos, or when the user asks). When recasting real footage, the base is always **the original source frame**, with a short prompt naming only the change. To keep a person across shots, add a **face-only crop** (head and hair) from their approved frame and say "use image 2 only for the face and hair, nothing else". Never feed a whole generated frame back as a reference: each pass gets crisper until it reads fake.
 - **References:** the tool hosts local files itself (signed R2 URLs, or kie's file hosting without R2); there is nothing to upload or delete. Pass an existing HTTPS URL directly when the reference isn't a cataloged brand asset.
@@ -47,6 +47,14 @@ Decide everything; never leave a choice to the model (no "water or can").
   ("sitting on the edge of the seat").
 - **One main motion per moment.** Stacked movements (a camera orbit around a spin) blur together and
   slow down; give one main motion and its tempo.
+- **Open mid-motion.** A clip whose first second is someone standing still wastes it: state that
+  from the very first frame they are already moving ("already turning, arms rising").
+- **A feeling is a reaction to the moment, not a trait or a pose.** "A small, shy laugh, like a
+  friend just teased her for showing off" reads real; "quietly confident", a shrug or a shoulder
+  roll reads staged. For an everyday act (taking a capsule), "neutral" means calm and quietly
+  content, unhurried, looking off into the distance: never unhappy, and never a performed smile.
+- **A hand with nothing to do rests on something** (the counter, her hip). Left hanging in the air,
+  it reads fake.
 - **Animate from the frame, not against it.** A clip's action works with what its start frame
   already shows. Asking for something the frame contradicts (jars standing in a row, prompted to
   slide over one at a time) or lacks (a friend handing over a cup in a frame they aren't in) breaks
@@ -82,7 +90,7 @@ Every ad gets its own folder in `outputs/`. A render lands in `drafts/`; on appr
   concept is a new ad with its own ID.
 - **Concept** — 2–4 words naming the angle's core message (`Greens-Beat-Pills`), not a line lifted
   from the script.
-- **Format** — e.g. `Static`, `UGC`, `Voiceover-Mashup`, `Voiceoverless-Mashup`, `Podcast`, `Animation`, `Slides`, `Song`.
+- **Format** — e.g. `Static`, `UGC`, `Voiceover-Mashup`, `Voiceoverless-Mashup`, `Podcast`, `Animation`, `Slides`, `Motion`, `Song`.
 - Underscores between parts, hyphens inside a part (`Disappearing-Woman`).
 
 Example: folder `3_Energy-Without-Coffee_UGC_Busy-Parent_Afternoon-Crash_Acme-Greens`, approved file

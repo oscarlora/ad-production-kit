@@ -12,6 +12,10 @@ Turn the locked concept into one structured, easy-to-read prompt under **200 wor
 
 - **Multi-unit rows: zone-filling beats true proportions.** N products in a row must fit the canvas width at true proportions, or the model stretches them. Let height follow proportions and declare the empty space intentional: *"the row spans the canvas with small gaps; can height follows true proportions, leaving open background above inside the zone; do not scale the product to fill the zone."*
 - **A single pre-composited reference needs an exact width-and-height pair**, never a width-only target or a zone. Compute both from the reference's ratio (3.63:1 in a 1002px slot = 1002×276px) and state them as fixed: *"renders at exactly 1002px wide by 276px tall — not a suggestion or an upper bound. There will be visible empty background around it since this is smaller than the zone — that is correct and expected, do not enlarge it to fill more."* Drop any "hero / prominent" framing on the product; it nudges oversizing.
+- **A real-looking person's sheet** is an amateur iPhone photo grid, two rows of four: head close-ups
+  (front, left, right, back) over the full body from the same four sides. A transformation gets a
+  before and an after sheet of the same person, each showing only the change (the before: extra
+  weight with a neutral face, no eye bags or messy hair; the after: healthy, not thin).
 - **Defaults for image ads:** 1 generation, GPT Image 2.5 Flare (its fast variant), 4:5, 1K tier. Never change aspect, resize or upscale on your own.
 
 ## Prompt structure (image ads)

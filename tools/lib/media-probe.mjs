@@ -373,9 +373,9 @@ async function probe({ file, media, id, sha256, phash, source }) {
   return { id, type, name, warnings };
 }
 
-// The media files under dir, outside reserved folders, sorted.
+// The media files under dir, outside reserved and hidden folders (.previews), sorted.
 const collect = (dir) => readdirSync(dir, { recursive: true, withFileTypes: true })
-  .filter((e) => !e.isDirectory() && !relative(dir, e.parentPath).split(sep).some((d) => RESERVED.has(d)))
+  .filter((e) => !e.isDirectory() && !relative(dir, e.parentPath).split(sep).some((d) => RESERVED.has(d) || d.startsWith('.')))
   .map((e) => join(e.parentPath, e.name)).filter(isMedia).sort();
 
 // Planning (hash, dedupe, allocate ids) is sequential so ids never race; probing runs in parallel.

@@ -123,16 +123,62 @@ function glyphs(ctx, s, x, y, st, color, sc, px) {
     ctx.shadowBlur = (sh.blur ?? 0) * px * sc; ctx.shadowOffsetX = (sh.x ?? 0) * px * sc; ctx.shadowOffsetY = (sh.y ?? 3) * px * sc;
   }
   if (st.stroke && st.strokeWidth) {
-    ctx.lineJoin = 'round';
-    ctx.lineWidth = st.strokeWidth * 2 * sc; // drawn centered on the edge: half shows outside the fill
-    ctx.strokeStyle = st.stroke;
-    ctx.strokeText(s, x, y);
+    const o = outline(ctx, s, st, sc);
+    ctx.drawImage(o.img, x - o.left, y - o.top, o.w, o.h);
     ctx.shadowColor = 'transparent';
   }
   ctx.fillStyle = color;
   ctx.fillText(s, x, y);
   ctx.shadowColor = 'transparent';
   ctx.letterSpacing = '0px';
+}
+
+// A word's outline, drawn centered on the glyph edge (half shows outside the fill), rasterized at the canvas's
+// own scale and cached. A thick stroke nearly closes small counters (the holes in b, g, o), leaving a light
+// slit inside the letter: those get filled solid.
+const outlines = new Map();
+function outline(ctx, s, st, sc) {
+  const m = ctx.getTransform(), R = Math.hypot(m.a, m.b) || 1;
+  const key = [s, ctx.font, ctx.letterSpacing, ctx.textAlign, ctx.textBaseline, st.stroke, st.strokeWidth, sc, R.toFixed(3)].join('|');
+  let o = outlines.get(key);
+  if (o) return o;
+  const lw = st.strokeWidth * 2 * sc, pad = lw / 2 + 2, mt = ctx.measureText(s);
+  const left = mt.actualBoundingBoxLeft + pad, top = mt.actualBoundingBoxAscent + pad;
+  const W = Math.ceil((left + mt.actualBoundingBoxRight + pad) * R), H = Math.ceil((top + mt.actualBoundingBoxDescent + pad) * R);
+  const img = new OffscreenCanvas(W, H), x = img.getContext('2d');
+  x.scale(R, R);
+  Object.assign(x, { font: ctx.font, letterSpacing: ctx.letterSpacing, textAlign: ctx.textAlign, textBaseline: ctx.textBaseline,
+    lineJoin: 'round', lineWidth: lw, strokeStyle: st.stroke, fillStyle: st.stroke });
+  x.strokeText(s, left, top);
+  x.fillText(s, left, top);
+  fillSlits(x, W, H, (lw * R) / 2);
+  if (outlines.size > 400) outlines.clear();
+  outlines.set(key, (o = { img, left, top, w: W / R, h: H / R }));
+  return o;
+}
+
+// Fill each see-through region the outside can't reach that is under `max` px across, with its anti-aliased rim.
+function fillSlits(x, W, H, max) {
+  const im = x.getImageData(0, 0, W, H), d = im.data, seen = new Uint8Array(W * H);
+  const clear = (i) => d[i * 4 + 3] < 128;
+  const around = (i) => { const c = i % W, n = []; if (c > 0) n.push(i - 1); if (c < W - 1) n.push(i + 1); if (i >= W) n.push(i - W); if (i < W * (H - 1)) n.push(i + W); return n; };
+  const flood = (start) => {
+    const px = [start], stack = [start];
+    seen[start] = 1;
+    while (stack.length) for (const j of around(stack.pop())) if (!seen[j] && clear(j)) { seen[j] = 1; px.push(j); stack.push(j); }
+    return px;
+  };
+  for (let i = 0; i < W; i++) for (const j of [i, (H - 1) * W + i]) if (!seen[j] && clear(j)) flood(j);
+  for (let i = 0; i < H; i++) for (const j of [i * W, i * W + W - 1]) if (!seen[j] && clear(j)) flood(j);
+  const solid = d.findIndex((_, k) => k % 4 === 3 && d[k] === 255) - 3;
+  if (solid < 0) return;
+  for (let i = 0; i < W * H; i++) {
+    if (seen[i] || !clear(i)) continue;
+    const px = flood(i), xs = px.map((j) => j % W), ys = px.map((j) => (j / W) | 0);
+    if (Math.min(Math.max(...xs) - Math.min(...xs), Math.max(...ys) - Math.min(...ys)) + 1 > max) continue;
+    for (const j of px.flatMap((p) => [p, ...around(p)])) d.copyWithin(j * 4, solid, solid + 4);
+  }
+  x.putImageData(im, 0, 0);
 }
 
 // Lay words into rows no wider than maxWidth. tokens: [{ s, w (width), …}]; returns rows of tokens with x set.
@@ -223,17 +269,22 @@ function drawTextBlock(ctx, tokens, st, px, color, bg) {
       ctx.save();
       ctx.globalAlpha *= tk.opacity ?? 1;
       ctx.translate(tk.x + tk.w / 2, top + i * lh);
+      if (tk.pop != null) ctx.scale(tk.pop, tk.pop);
       glyphs(ctx, cased(tk.s, st), -tk.w / 2, 0, st, tk.color || color, sc, px);
       ctx.restore();
     }
   });
 }
 
+// reveal ({ each, dur, delay } in s, or true): the words pop in one after another from the clip's start.
 function drawText(ctx, c, t, env) {
   const st = { ...DEFAULT_TEXT, ...c.style };
-  place(ctx, c, t, env, () => {
-    drawTextBlock(ctx, parseText(c.text, st.accent || '#FFD400'), st, env.k, val(st.color, t), st.background);
-  });
+  const tokens = parseText(c.text, st.accent || '#FFD400');
+  if (c.reveal) {
+    const { each = 0.07, dur = 0.35, delay = 0.1 } = c.reveal === true ? {} : c.reveal;
+    tokens.forEach((tk, i) => { const p = (t - c.at - delay - i * each) / dur; if (p <= 0) tk.hidden = true; else if (p < 1) tk.pop = ease('back', p); });
+  }
+  place(ctx, c, t, env, () => drawTextBlock(ctx, tokens, st, env.k, val(st.color, t), st.background));
 }
 
 // Captions: one line at a time; with word times, the spoken word takes `active` (color, scale) and
@@ -373,7 +424,8 @@ const oppo = (d) => ({ left: 'right', right: 'left', up: 'down', down: 'up' }[d]
 // ---- one frame ----
 // An ad's fx.js (doc.fx) may export layers { name(ctx, clip, t, env) }, transitions
 // { name(ctx, paintA, paintB, p, env, params) } and animations { name(p) -> { o, s, dx, dy, b } }.
-// A layer animates with env.motion (GSAP timelines, Three.js scenes; see motion.js).
+// A layer draws with env.mg (timing, motion presets, outlined shapes; see mg.js) and env.motion (GSAP timelines,
+// Three.js scenes; see motion.js).
 // frames: clip id -> its decoded frame or image. Tracks draw bottom-up: the first track is on top.
 export function drawFrame(ctx, doc, t, frames, env) {
   ctx.setTransform(env.k, 0, 0, env.k, 0, 0);

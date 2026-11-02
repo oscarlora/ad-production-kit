@@ -25,6 +25,7 @@ Built on what I ([@oscarlorak](https://x.com/oscarlorak)) learned making ads for
 - **Animated video ads:** animated characters speaking or acting out your script, in Pixar,
   claymation or any animation style.
 - **Slides video ads:** a narrated explainer, one illustrated slide per line.
+- **Motion graphics videos:** animated shapes, characters and text drawn in code; free to revise.
 - **UGC edits:** a creator's footage checked against the script, then cut into the ad.
 - **Short recuts:** sub-30 s versions recombined from a finished talking-head or UGC edit.
 - **Replicated ads:** share an ad you like and get the same structure for your product, made from
@@ -38,8 +39,8 @@ Everything runs through your agent: say what you want in plain words.
    Meta ads, what people post about it, its top 3 competitors and any files you share, then writes up
    the brand, each product, its customers (personas) and why they buy (angles), the competitors, and
    the brand's look.
-2. **Concept:** *"Make an image ad for Acme"* — or a script, or a podcast, song, animated or
-   slides video ad, or *"make one like this"* with an ad to replicate. The agent offers 3 different
+2. **Concept:** *"Make an image ad for Acme"* — or a script, or a podcast, song, animated,
+   slides or motion graphics video ad, or *"make one like this"* with an ad to replicate. The agent offers 3 different
    concepts (persona, angle, hook); you pick one.
 3. **Write:** hooks, script and on-screen copy.
 4. **Make:** the design or storyboard, then images, voices, music and video clips. You see and

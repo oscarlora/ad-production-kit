@@ -61,6 +61,10 @@ node tools/generate-voice.mjs \
 
 Labeled dialogue (`--voices-file`) and every other flag: `--help`. Keep earlier takes with `-a`, `-b`, `-c` suffixes.
 
+Check every take before it reaches the user: its length against the planned pace (a calm, soothing
+delivery comes out about 20% slower than the words per second asked; ask faster, then trim pauses over
+0.5 s), and one voice throughout (a take can drift into another timbre mid-file: compare pitch across it).
+
 ## Isolate, enhance or re-voice (ElevenLabs, or local Resemble Enhance)
 
 `tools/fix-voice.mjs` (`--help`) fixes a real speaker's voice. `isolate`, `clone` and `patch` need `<WS>_ELEVENLABS_API_KEY`;

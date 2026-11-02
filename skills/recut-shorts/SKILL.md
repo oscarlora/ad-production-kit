@@ -21,13 +21,17 @@ Give each a different job and show the plan as a numbered list before building:
 1. **The story, short** — the source's own arc with the middle trimmed: problem → story → product → CTA.
 2. **One argument** — one point carried end to end (say, the nutrient gap): the point → the turn →
    product → CTA.
-3. **Results first** — open on the payoff, then reveal the cause: results → the answer → product → CTA.
+3. **Results first** — open on the payoff, then reveal the cause: results → the problem → the answer →
+   product → CTA. An answer with no problem before it doesn't follow.
 
 Lines go in any order and can change roles (a CTA's results line as the hook, a hook line as the
 close), as long as each cut reads as one logical story. Each finds a new hook in another line, never
 the source's hook takes (those are its own versions): one a viewer gets in a single listen, with no
 set-up. A line that needs context (who "they" are, a dense claim) works mid-story, where the lines
-before it and the captions carry it. Every
+before it and the captions carry it; one that leans on an earlier term ("bad at converting it") needs
+the line that sets the term up in the same cut, or a stranger never learns what it means. A curiosity
+hook needs its payoff spoken in the body ("your body doesn't have to convert a thing"). The jump to
+the product needs the line that leads into it ("nobody cooks that for dinner, so I take…"). Every
 line keeps its approved wording, so a recut adds no new claim; a line may drop its first word ("But",
 "And") when its new place needs it. Keep each under 30 s; drop a supporting sentence before you rush
 the pace, starting with asides that hold off the product and its results (credentials, "that's why I
@@ -41,8 +45,8 @@ tell my friends").
   Its clips (footage referenced in place), pacing, captions, overlays and end card carry over and the
   music runs under the whole cut, so nothing needs tightening again.
 - **Seams:** where a stretch drops a word, check it by ear (`edit-video.mjs audio --from --to
-  --transcribe`) and move the cut until none of the word is left. A cut inside a line takes a small
-  scale step (~1.06) so it reads as a punch, not a jump.
+  --transcribe`) and move the cut until none of the word is left. A cut inside a line punches in
+  (**edit-video**, Cuts and pacing).
 - **Hook framing:** each cut gets its own hook text (`--hook`), written for its new first line in the
   source hook's style (a short tease, same length and accent), since the source's was written for
   another line and reads off over this one; none when the stretch already has text (a list building)
@@ -50,6 +54,7 @@ tell my friends").
   add them to the first stretch yourself and re-place them for its shot.
 - **Dropped first word:** when a line drops its first word ("But", "Then"), make sure the next word
   survives whole; when the two run together, keep both.
+- **B-roll:** `recut` keeps the source's shots, chosen for the old order, and the tails of shots that ran past a line's edge. Re-pick each cut's B-roll for what its lines now say (the library and the source footage both), and drop any shot fragment under ~0.8 s.
 - **Text:** the edit-video text rules still apply. A graphic in the hook stretch that
   builds on an earlier line now coming later (blocks stacked a line before) comes out, with its sound.
 

@@ -112,7 +112,14 @@ async function pullAir(source, out, { dryRun } = {}) {
     if (existsSync(join(out, name)) && statSync(join(out, name)).size === c.size) continue; // a re-run fetches only what's missing
     if (dryRun) { console.log(`  would download ${name} (${(c.size / 1e6).toFixed(1)} MB)`); continue; }
     const file = uniqueName(out, name);
-    try { await downloadFile(c.assets.original, join(out, file)); } catch (e) { console.error(`  ✗ ${name}: ${e.message}`); continue; }
+    let bytes;
+    try { ({ bytes } = await downloadFile(c.assets.original, join(out, file))); } catch (e) { console.error(`  ✗ ${name}: ${e.message}`); continue; }
+    // A failed upload leaves Air holding part of the original; its 1080p stream (HLS) is whole.
+    if (bytes < c.size && c.assets.video) {
+      const r = spawnSync(findBin('ffmpeg'), ['-v', 'error', '-y', '-i', c.assets.video, '-c', 'copy', '-f', 'mp4', join(out, file)], { encoding: 'utf8' });
+      if (r.status) { rmSync(join(out, file), { force: true }); console.error(`  ✗ ${name}: original cut off, stream failed: ${r.stderr.trim()}`); continue; }
+      console.error(`  ! ${name}: Air's original is cut off (upload failed); took its 1080p stream. Ask for a re-upload for 4K.`);
+    }
     console.log(`  ↓ ${file}`); n++;
   }
   return n;

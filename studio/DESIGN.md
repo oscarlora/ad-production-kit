@@ -21,7 +21,7 @@ calm, built for scanning many ads fast.
 - Lines: `--line` dividers and table rules · `--line-strong` hover borders and empty dots
 - Status, only as 7px dots, never as fills: `--success` Approved / done, `--info` Pending Review /
   current, `--warning` errors. In Progress is a hollow dot.
-- Video stages sit on `--stage` (pure black). The only solid dark fill is the primary button.
+- Video stages sit on `--stage` (pure black); the editor letterboxes its preview on `--media-bg`. The only solid dark fill is the primary button.
 
 ## Typography
 
@@ -78,7 +78,8 @@ and nav buttons. A dashed border means empty or a draft.
 - **Markdown editor** `.mde`: rendered markdown, edited as it reads: a clicked block or table cell becomes editable
   in place (bold, italic, links, lists), framed by a hairline (a cell by a 1.5px `--fg` frame with `--radius-sm`,
   floating a little past its edges); a labeled line edits as its title and its text; only comments edit as raw text. Grips (`--faint`) sit in a margin outside the content and show on hover: left of a block; for a table, the
-  hovered column's in a strip above the header, the hovered row's in a left gutter.
+  hovered column's in a strip above the header, the hovered row's in a left gutter. Table columns wrap between
+  8rem and 20rem (the row label 5–9rem), and a wider table scrolls sideways.
   A 2px `--fg` line marks where a drag drops; hovering a grip shades its row or column. A clicked grip selects its block, row or column (`--fill`; a drag across rows or Shift+click selects several) and opens a
   floating menu (`--shadow-float`), Delete last under a hairline. A script table ends with its word count and spoken time
   (estimated, or the voice take's own length once there is one), each after a muted icon; the hook in that sentence is

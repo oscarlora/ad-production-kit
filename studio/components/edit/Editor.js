@@ -314,7 +314,8 @@ export default function Editor({ ws, brand, ad, edit }) {
   const comments = useMemo(() => edit.comments.filter((n) => (n.plan || 'edit.json') === plan.file), [edit.comments, plan.file]);
   const pending = useMemo(() => comments.filter((n) => n.status !== 'approved'), [comments]);
   const nums = useMemo(() => commentNumbers(comments), [comments]);
-  const shown = comments.filter((n) => n.box && (n.id === focus || n.id === lit || (!playing && n.status !== 'done' && n.status !== 'approved' && Math.abs(n.t - t) < 0.2)));
+  // Only open comments mark the frame: a done one's box would cover the change it asks you to judge.
+  const shown = comments.filter((n) => n.box && n.status !== 'done' && n.status !== 'approved' && (n.id === focus || n.id === lit || (!playing && Math.abs(n.t - t) < 0.2)));
   const exp = edit.export?.plan === plan.file ? edit.export : null;
   const W = doc?.W || 1080, H = doc?.H || 1920;
   const [zone, nextZone] = useZones(W / H);
@@ -331,7 +332,7 @@ export default function Editor({ ws, brand, ad, edit }) {
     .then((r) => recordUndo(r.undo)).catch((e) => setError(e.message)), [ws, brand, ad, plan.file, recordUndo]);
 
   return (
-    <div className="ed" ref={rootRef}>
+    <div className="ed" ref={rootRef} style={{ '--ar': W / H }}>
       <div className="ed__main">
         <div className="ed__stage" ref={stageRef} style={{ aspectRatio: `${W} / ${H}` }} onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp} role="img" aria-label="Preview: click or drag to leave a comment">
           <canvas ref={canvasRef} />

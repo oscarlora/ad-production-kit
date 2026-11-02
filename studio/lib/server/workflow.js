@@ -148,12 +148,12 @@ function shotsWithMedia(brandDirAbs, folder, sb, files) {
 }
 
 // ---- footage.json (review-ugc-footage) ----
-// { clips: { "<scene>": { file, transcript?, checks?: { line|action|framing|audio: { ok, note?, reshoot? } },
+// { clips: { "<scene>": { file, id? (its media library record), checks?: { line|action|framing|audio: { ok, note?, reshoot? } },
 // ticks?: { <check>: bool }, decision? } } }, paths relative to the ad folder. checks are the AI's verdicts (the file
 // name's is worked out here); ticks are the user's (set in Studio, or by the agent on their comment), and a check
 // without one follows the AI's verdict. A scene with every check ticked is approved, unless the user called a reshoot (decision: 'reshoot').
-// Rows follow the brief's scene tables (LINES TO CAMERA, B-ROLL); a scene the brief lacks comes last, marked extra.
-const SCENE_TABLES = /^(lines to camera|hooks|script|b-?roll)/i;
+// Rows follow the brief's scene tables (LINES TO CAMERA or VOICE OVER, B-ROLL); a scene the brief lacks comes last, marked extra.
+const SCENE_TABLES = /^(lines to camera|voice ?over|hooks|script|b-?roll)/i;
 const baseName = (rel) => rel.split('/').pop();
 const sceneKey = (s) => String(s).replace(/\*\*/g, '').trim().toLowerCase().replace(/\s+/g, ' ');
 const nameKey = (s) => String(s).toLowerCase().replace(/[^a-z0-9]/g, '');
@@ -215,7 +215,7 @@ const EXPORTED = any(ROOT_VIDEO, under('final', 'video')); // edit-video exports
 // A step with a section shows those sections of the newest root .md (the brief); pick narrows them to matching blocks, cols to matching table columns.
 // Every ad's brief opens with its concept section (block format: open-studio).
 const CONCEPT = { key: 'concept', label: 'Concept', section: /^concept/i, pick: /^(\*\*(Product|Persona|Angle|Message|For|Format|Style|Cast|Concept Overview|Reference)(:|\*\*$))/ };
-const SCRIPT_TABLE = { section: /^(lines to camera|hooks|script)/i, pick: /^\|/ };
+const SCRIPT_TABLE = { section: /^(lines to camera|voice ?over|hooks|script)/i, pick: /^\|/ };
 // Whether a brief has a step's section (with a block it picks), and the view that shows it.
 const hasSection = (blocks, def) => !!def.section && inSections(blocks, def.section).some((on, i) => on && (!def.pick || def.pick.test(blocks[i].src)));
 const viewOf = (def) => ({ only: def.section.source, pick: def.pick?.source, cols: def.cols?.source });
@@ -244,8 +244,8 @@ const FAMILIES = {
   ugc: [ // creator-filmed: write-copy's brief template, built section by section, then the edit
     { key: 'profile', label: 'Profile', optional: true, files: (f) => f.rel === 'references/profile.md' }, // an ad for a known creator: their profile, reels as media blocks
     CONCEPT,
-    { key: 'script', label: 'Script', ...SCRIPT_TABLE, cols: /^(scene|line|talking points)$/i },
-    { key: 'storyboard', label: 'Storyboard', section: /^(lines to camera|slides|b-?roll|visuals)/i, pick: /^\|/, files: under('slides', 'image') },
+    { key: 'script', label: 'Script', ...SCRIPT_TABLE, cols: /^(scene|lines?|talking points)$/i },
+    { key: 'storyboard', label: 'Storyboard', section: /^(lines to camera|voice ?over|slides|b-?roll|visuals)/i, pick: /^\|/, files: under('slides', 'image') },
     { key: 'brief', label: 'Brief', files: any(ROOT_MD, (f) => /^analysis\.md$/i.test(f.rel)) },
     { key: 'footage', label: 'Footage' }, // footage.json, filled in adWorkflow
     { key: 'edit', label: 'Edit', files: ROOT_VIDEO },
@@ -253,6 +253,11 @@ const FAMILIES = {
   creator: [ // editor-built formats: a brief, then the delivered video
     { key: 'brief', label: 'Brief', files: any(ROOT_MD, (f) => /^analysis\.md$/i.test(f.rel), under('slides', 'image')) },
     { key: 'video', label: 'Video', files: ROOT_VIDEO },
+  ],
+  motion: [ // make-motion-graphics: coded, nothing generated but its sounds
+    { key: 'script', label: 'Script', section: /^(storyboard|shots)$/i, pick: /^\|/, cols: /^(#|line|what we see)$/i },
+    { key: 'sounds', label: 'Sounds', files: any(under('sfx', 'audio'), under('music', 'audio')) },
+    { key: 'edit', label: 'Edit', files: EXPORTED },
   ],
   video: [ // other generated video (explainer)
     { key: 'script', label: 'Script', files: any(ROOT_MD, (f) => f.rel === 'script.md', under('voice', 'txt')) },
@@ -271,6 +276,7 @@ FAMILIES.podcast = [LOOK, SCRIPT, ...REST];
 function familyOf(format) {
   const f = format.toLowerCase();
   if (f === 'animation' || f === 'slides') return 'animation'; // make-ai-slides shares the storyboard view
+  if (f === 'motion') return 'motion';
   if (/song/.test(f)) return 'song';
   if (/podcast/.test(f)) return 'podcast';
   if (/static|image|screenshot|carousel/.test(f)) return 'image';

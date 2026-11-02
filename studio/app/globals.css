@@ -557,7 +557,9 @@ kbd { font: inherit; font-size: var(--text-xs); color: var(--muted); background:
 .md ul { padding-left: 18px; }
 .md li + li { margin-top: 4px; }
 .md__table { overflow-x: auto; }
-.md table, .mde table { border-collapse: collapse; font-size: var(--text-xs); min-width: 36rem; }
+.md table, .mde table { border-collapse: collapse; font-size: var(--text-xs); width: max-content; min-width: 100%; }
+/* Each column wraps between a min and max width; a table wider than the page scrolls sideways. */
+.md :is(th, td), .mde .mde__cell { min-width: 8rem; max-width: 20rem; }
 .md th, .md td, .mde th, .mde td { text-align: left; vertical-align: top; padding: 6px 10px; border-bottom: 1px solid var(--line); }
 .md th, .mde th { font-weight: 500; color: var(--muted); }
 
@@ -602,13 +604,12 @@ kbd { font: inherit; font-size: var(--text-xs); color: var(--muted); background:
 /* The table's gutter lines up with the blocks' grips; the column strip and gutter carry no rules. */
 .mde__table { margin-left: -32px; }
 .mde__table > .md__table { padding: 4px 8px; margin: -4px -8px; } /* room for the editing frame inside the scroll box */
-.mde table { min-width: 0; width: 100%; }
 .mde .mde__gutter { width: 32px; min-width: 32px; padding: 0; border-bottom: 0; vertical-align: middle; }
 .mde .mde__handles > th { height: 18px; padding: 0; border-bottom: 0; vertical-align: bottom; }
 .mde__handles .mde__grip { width: 22px; height: 16px; }
 .mde__handles .mde__grip svg { transform: rotate(90deg); }
 .mde__cell { cursor: text; }
-.mde tbody .mde__gutter + .mde__cell { white-space: nowrap; } /* the row's label (Hook 1, Body 10) */
+.mde tbody .mde__gutter + .mde__cell { min-width: 5rem; max-width: 9rem; } /* the row's label (Hook 1, Body 10) */
 .mde__cell:hover, .mde .mde__cell[data-lit]:not(.is-editing) { background: var(--fill-soft); }
 .mde tr[data-sel] > .mde__cell, .mde .mde__cell[data-sel] { background: var(--fill); }
 .mde__table[data-rows] ::selection { background: transparent; } /* rows being drag-selected show as rows, not text */
@@ -763,7 +764,7 @@ kbd { font: inherit; font-size: var(--text-xs); color: var(--muted); background:
 }
 
 /* ---- Edit: preview, comments, timeline ---- */
-.ed { --ed-h: max(280px, calc(100vh - var(--bar-h) - var(--tl-h, 260px))); display: grid; grid-template-columns: max-content minmax(15rem, 1fr); gap: 16px 24px; align-items: start; padding-bottom: var(--tl-h, 260px); }
+.ed { --ed-h: max(280px, calc(100vh - var(--bar-h) - var(--tl-h, 260px))); container-type: inline-size; display: grid; grid-template-columns: max-content minmax(15rem, 1fr); gap: 16px 24px; align-items: start; padding-bottom: var(--tl-h, 260px); }
 .flow-page:has(.ed) { padding-top: 0; padding-bottom: 0; }
 /* The editor: all on white */
 .flow-panel:has(.ed) { margin: 0 calc(-1 * var(--page-pad)); padding: 20px var(--page-pad) 0; background: var(--bg); min-height: calc(100vh - var(--bar-h)); }
@@ -775,8 +776,8 @@ kbd { font: inherit; font-size: var(--text-xs); color: var(--muted); background:
 .ed__edge { position: absolute; z-index: 5; left: 0; right: 0; top: -1px; height: 7px; cursor: row-resize; touch-action: none; }
 .ed__edge::after { content: ""; position: absolute; left: 0; right: 0; top: 0; height: 2px; transition: background-color var(--dur) var(--ease-out); }
 .ed__edge:hover::after, [data-drag] > .ed__edge::after { background: var(--muted); }
-.ed__main { width: min-content; margin: -20px 0 0 calc(-1 * var(--page-pad)); border-right: 1px solid var(--line); } /* the preview fills the height, flush left, a line on its right like the timeline's */
-.ed__stage { position: relative; height: var(--ed-h); background: var(--stage); overflow: hidden; cursor: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24'%3E%3Cpath d='M21 12a8 8 0 01-11.6 7.1L4 20l1-4.6A8 8 0 1121 12z' fill='%23fff' stroke='%23111' stroke-width='1.5' stroke-linejoin='round'/%3E%3C/svg%3E") 4 20, crosshair; touch-action: none; user-select: none; }
+.ed__main { width: min(calc(var(--ed-h) * var(--ar)), calc(100cqw + var(--page-pad) - 15rem - 24px)); height: var(--ed-h); display: grid; place-items: center; margin: -20px 0 0 calc(-1 * var(--page-pad)); background: var(--media-bg); border-right: 1px solid var(--line); } /* a grey stage filling the height, flush left, a line on its right like the timeline's; as wide as the frame, or the width beside the 15rem side column */
+.ed__stage { position: relative; width: 100%; max-height: 100%; background: var(--stage); overflow: hidden; cursor: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24'%3E%3Cpath d='M21 12a8 8 0 01-11.6 7.1L4 20l1-4.6A8 8 0 1121 12z' fill='%23fff' stroke='%23111' stroke-width='1.5' stroke-linejoin='round'/%3E%3C/svg%3E") 4 20, crosshair; touch-action: none; user-select: none; }
 .ed__stage canvas { width: 100%; height: 100%; display: block; }
 .ed__zones { position: absolute; inset: 0; pointer-events: none; }
 .ed__wait { position: absolute; inset: 0; display: grid; place-items: center; color: var(--faint); font-size: var(--text-xs); }
@@ -908,8 +909,7 @@ textarea.ed__add { display: block; width: 100%; min-height: 36px; padding: 8px 4
 
 @media (max-width: 900px) {
   .ed { grid-template-columns: minmax(0, 1fr); }
-  .ed__main { width: auto; }
-  .ed__stage { height: auto; width: 100%; }
+  .ed__main { width: auto; height: auto; }
   .ed__comments { max-height: none; }
   .ed__head { margin: -16px calc(-1 * var(--page-pad)) 0; padding: 0 var(--page-pad); }
   .vw__side { width: 340px; }

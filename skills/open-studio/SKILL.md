@@ -43,6 +43,7 @@ beside you: show a page with the `open_page` tool instead of launching anything.
   - Image: Prompt · Drafts · Final · Meta copy
   - Animation: Concept · Script · Voice · Sheets · Frames · Clips · Edit
   - Slides: Concept · Script · Voices · Storyboard · Sheets · Frames · Clips · Edit
+  - Motion: Concept · Script · Sounds · Edit
   - Song: Concept · Lyrics · Song · Look · Storyboard · Clips · Edit
   - Podcast: Look · Script · Clips · Music · Edit
   - UGC: Profile (only when the ad is for a known creator: `references/profile.md`) · Concept · Script
@@ -51,7 +52,7 @@ beside you: show a page with the `open_page` tool instead of launching anything.
   - Other video: Script · Voice · Look · Clips · Music · Edit
 
   Animation's Concept shows `storyboard.md`'s CONCEPT section; Script the shot table's #, Line and What we see columns, editable, with word count and a voice button (the shots show as cards from Frames on); Voice each take with a pick button (`voice.json`); Sheets each sheet as a card with its prompt. UGC steps show the brief's sections: Concept its Message, For, Format and Reference lines and the media under them,
-  Script the LINES TO CAMERA Scene and Line (or Talking points) columns (with word count, spoken time and a voice
+  Script the LINES TO CAMERA (or VOICE OVER) Scene and Line (or Talking points) columns (with word count, spoken time and a voice
   button), Storyboard every column and the SLIDES / B-ROLL tables, Footage each scene's clip and
   checklist under a delivery and approval summary (**review-ugc-footage**). Every .md shown is a
   page of blocks, editable in place. One block carries one thing: a title is its own bold block

@@ -88,6 +88,7 @@ Then reply with the plan: the steps in order, what you'll ask them, and that the
 - **make-ai-song** — song video ads
 - **make-ai-animation** — animated video ads, narrated or dialogue
 - **make-ai-slides** — slides video ads, a narrated explainer
+- **make-motion-graphics** — coded motion graphics videos, nothing generated but sounds
 - **replicate-ad** — an ad modeled on a reference the user wants to swipe
 
 Scripts need no workflow: **write-copy**.

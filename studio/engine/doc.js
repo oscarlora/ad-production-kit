@@ -116,8 +116,10 @@ export function mapTimes(doc, f, skip = new Set()) {
 // override the base's; the base's output is dropped. Each clip carries ORIGIN: [own?, track, clip] (indices in the file it comes from).
 export const ORIGIN = Symbol('origin');
 const BED = Symbol('bed');
-// A sound bed: audio that opens the edit (music from 0), kept whole when the edit is rearranged.
-export const isBed = (c) => !c.lines && (c.at ?? 0) <= 1e-3 && (c.type === 'audio' || /\.(mp3|m4a|wav|aac|ogg|flac)$/i.test(c.src || ''));
+// A sound bed: audio that opens the edit and runs on (music from 0, not an opening whoosh), kept whole when the
+// edit is rearranged.
+export const isBed = (c) => !c.lines && (c.at ?? 0) <= 1e-3 && (endOf(c) ?? Infinity) > 5 &&
+  (c.type === 'audio' || /\.(mp3|m4a|wav|aac|ogg|flac)$/i.test(c.src || ''));
 export function compose(raw, base) {
   if (base.base) throw new Error(`${raw.base} has a base itself`);
   const doc = structuredClone(base);
