@@ -7,7 +7,8 @@ description: Assemble and revise a video ad in ADPK's own editor — an edit doc
 
 An ad's edit is one JSON document, `outputs/<ad>/edit.json`. A version that changes only the hook
 (`edit-v2.json`, `edit-v3.json`…) holds just its hook on top of `"base": "edit.json"`, so body changes
-happen once, in `edit.json` (a music bed that opens the base opens each version too); one that differs more (a reframe, **recut-shorts**) is a full copy.
+happen once, in `edit.json` (a music bed that opens the base opens each version too, and so does any audio
+from 0 that runs past 5 s: split a voiceover or sound stem at the body's start); one that differs more (a reframe, **recut-shorts**) is a full copy.
 Editing marks the ad as yours until you push (sync-brand). Studio's Workflow page shows it live in
 the ad's **Edit** step: preview, timeline, review comments and an Export button. Change the document
 (or replace a media file it uses) and the preview follows within a second. Schema, flags and every subcommand: `node tools/edit-video.mjs --help`.

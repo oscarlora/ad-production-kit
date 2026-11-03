@@ -524,8 +524,19 @@ function recutCmd(p) {
   src.tracks.forEach((tr, k) => {
     const t = doc.tracks[k], caps = t.clips.filter((c) => c.lines);
     for (const [id, v] of trackKeys[k]) { const path = JSON.parse(id), key = path.pop(); let o = t; for (const x of path) o = o[x]; o[key] = v; }
-    if (caps.length > 1) t.clips = [...t.clips.filter((c) => !c.lines), { ...caps[0], at: 0, end: pos, lines: caps.flatMap((c) => c.lines) }];
+    if (caps.length > 1) {
+      const one = { ...caps[0], at: 0, end: pos, lines: caps.flatMap((c) => c.lines) };
+      // A move (captions lifted off a label) carries over from every stretch, each opening on its own value.
+      for (const k of MOVES) if (caps.some((c) => keyed(c[k]))) one[k] = caps.flatMap((c) => (keyed(c[k]) ? c[k] : c[k] != null ? [[c.at ?? 0, c[k], 'hold']] : []));
+      t.clips = [...t.clips.filter((c) => !c.lines), one];
+    }
     for (const c of (tr.clips || []).filter(isBed)) t.clips.push({ ...structuredClone(c), end: pos });
+    // A shot stretched back over a scrap past its source's first frame starts on that frame; the shot before holds on.
+    for (const c of t.clips) if (c.src && c.in < 0) {
+      const before = t.clips.find((x) => x !== c && Math.abs((endOf(x) ?? -1) - c.at) < 1e-3);
+      c.at = r3(c.at - c.in / (c.rate ?? 1)); c.in = 0;
+      if (before) before.end = c.at;
+    }
   });
   if (args.hook) {
     const text = clipsOf(src).filter((c) => c.type === 'text'), like = text.find((c) => !(c.at > 0)) || text[0];

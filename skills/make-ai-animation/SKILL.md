@@ -52,7 +52,9 @@ The script is written straight into the shot list, so each line shows with what 
 brief has one or the user writes it (**write-copy**'s user-written rule). Otherwise write it with
 **write-copy**, including its pace (Length).
 
-- **Narrated:** one voice to the viewer, one line per idea, every line something you can picture.
+- **Narrated:** one voice to the viewer, speaking to "you", never "I" or "us" (it's a told story, not
+  a testimonial: turn a UGC script's first person around), one line per idea, every line something
+  you can picture.
 - **Dialogue:** **write-copy**'s dialogue rules; narrator lines `VO:`.
 
 `storyboard.md` after the CONCEPT: a NOTES section (the device, symbols, blocking, direction), then a
