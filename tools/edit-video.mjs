@@ -320,6 +320,11 @@ const cutKeys = (v, a, b) => {
 };
 const cutValues = (o, a, b) => eachKeyed(o, (h, k, v) => { h[k] = cutKeys(v, a, b); });
 
+// A media clip with no end plays to its source's end: write that end in, so a cut can't treat it as endless.
+// A sound bed runs alone on its track; a voice track's first take (from 0, past 5 s) is not one.
+const bedOn = (tr, c) => isBed(c) && (tr.clips || []).length === 1;
+const fillEnds = (doc, dir) => { for (const c of (doc.tracks || []).flatMap((tr) => tr.clips || [])) if (c.src && !c.loop && endOf(c) == null) c.end = r3((c.at ?? 0) + (probeDur(resolve(dir, c.src)) - (c.in ?? 0)) / (c.rate ?? 1)); };
+
 // Remove [a, b] from every track of a document (times to the millisecond, so cut edges meet exactly).
 function cutDoc(doc, a, b) {
   const d = b - a, shift = (t) => (t >= b ? r3(t - d) : t > a ? a : t);
@@ -334,7 +339,7 @@ function cutDoc(doc, a, b) {
       if (c.lines) c.lines = c.lines.filter((l) => !(l.words?.length ? l.words.every(([, s, e]) => s >= a && e <= b) : l.at >= a && l.end <= b)).map((l) => ({ ...l, at: shift(l.at), end: shift(l.end), ...(l.words && { words: l.words.map(([w, s, e, ...x]) => [w, shift(s), shift(e), ...x]) }) }));
       if (end <= a || at >= b) { if (at >= b) { c.at = r3(at - d); if (c.end != null) c.end = r3(end - d); } out.push(c); continue; }
       if (at >= a && end <= b) continue; // wholly inside: gone
-      if (at < a && end > b && isBed(c)) { c.end = r3(end - d); out.push(c); continue; } // a music bed plays on unbroken
+      if (at < a && end > b && bedOn(tr, c)) { c.end = r3(end - d); out.push(c); continue; } // a music bed plays on unbroken
       if (at < a && end > b && c.src && !c.lines) { // spans the cut: split, the second part skips the cut's source
         out.push({ ...c, end: a });
         out.push({ ...c, at: a, in: r3((c.in ?? 0) + (b - at) * rate), ...(c.end != null && { end: r3(end - d) }), transition: undefined });
@@ -461,6 +466,7 @@ function cutCmd(p) {
   const a = +args.from, b = +args.to;
   if (!(b > a)) die('--from and --to (seconds, from < to) are required');
   const doc = readDoc(p, true);
+  fillEnds(doc, dirname(p));
   cutDoc(doc, a, b);
   saveDoc(p, doc);
   console.log(`cut ${round(a)}–${round(b)}s (${round(b - a)}s) from every track`);
@@ -474,6 +480,7 @@ function recutCmd(p) {
   const spans = String(args.lines || '').split(',').map((s) => s.split('-').map(Number));
   if (!args.out || spans.some(([a, b]) => !(b > a))) die('--lines a-b,a-b,… (seconds on the source timeline) and --out <edit.json> are required');
   const src = readDoc(p), out = resolve(args.out), clipsOf = (d) => d.tracks.flatMap((tr) => tr.clips || []);
+  fillEnds(src, dirname(p));
   const total = Math.max(...clipsOf(src).map((c) => endOf(c) ?? 0));
   const doc = { ...structuredClone(src), tracks: src.tracks.map((tr) => ({ ...structuredClone(tr), clips: [] })) };
   delete doc.output; delete doc.duration;
@@ -481,7 +488,7 @@ function recutCmd(p) {
   const trackKeys = src.tracks.map(() => new Map()); // per track: keyed path → its keys, stretch after stretch
   spans.forEach(([a, b], i) => {
     const part = structuredClone(src);
-    for (const tr of part.tracks) tr.clips = (tr.clips || []).filter((c) => !isBed(c));
+    for (const tr of part.tracks) tr.clips = (tr.clips || []).filter((c) => !bedOn(tr, c));
     for (const c of clipsOf(part)) {
       if ((c.at ?? 0) < a && (endOf(c) ?? Infinity) > a) delete c.transition; // it led in from a clip that's gone
       // A caption line the stretch cuts into keeps only its words inside it (a new first word capitalized).
@@ -530,7 +537,7 @@ function recutCmd(p) {
       for (const k of MOVES) if (caps.some((c) => keyed(c[k]))) one[k] = caps.flatMap((c) => (keyed(c[k]) ? c[k] : c[k] != null ? [[c.at ?? 0, c[k], 'hold']] : []));
       t.clips = [...t.clips.filter((c) => !c.lines), one];
     }
-    for (const c of (tr.clips || []).filter(isBed)) t.clips.push({ ...structuredClone(c), end: pos });
+    for (const c of (tr.clips || []).filter((c) => bedOn(tr, c))) t.clips.push({ ...structuredClone(c), end: pos });
     // A shot stretched back over a scrap past its source's first frame starts on that frame; the shot before holds on.
     for (const c of t.clips) if (c.src && c.in < 0) {
       const before = t.clips.find((x) => x !== c && Math.abs((endOf(x) ?? -1) - c.at) < 1e-3);

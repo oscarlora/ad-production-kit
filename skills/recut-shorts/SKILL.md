@@ -45,8 +45,11 @@ tell my friends").
   Its clips (footage referenced in place), pacing, captions, overlays and end card carry over and the
   music runs under the whole cut, so nothing needs tightening again.
 - **Seams:** where a stretch drops a word, check it by ear (`edit-video.mjs audio --from --to
-  --transcribe`) and move the cut until none of the word is left. A cut inside a line punches in
-  (**edit-video**, Cuts and pacing).
+  --transcribe`) and move the cut until none of the word is left. A stretch that ends on a laugh or
+  reaction ends in the quiet right after it (find the dip on a loudness trace): never mid-laugh, never
+  on the next breath in. A cut inside a line punches in (**edit-video**, Cuts and pacing).
+- **Hook text** covers the whole first stretch, its captions off: when that stretch runs on past its
+  opening line, end the hook text there and give the rest its captions back.
 - **Hook framing:** each cut gets its own hook text (`--hook`), written for its new first line in the
   source hook's style (a short tease, same length and accent), since the source's was written for
   another line and reads off over this one; none when the stretch already has text (a list building)

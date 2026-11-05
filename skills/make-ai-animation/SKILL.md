@@ -140,6 +140,14 @@ follow **write-prompt**'s "How a model reads a prompt".
   hand). The clip can't bring in what the frame lacks.
 - **The product:** `sheets/product.png` first in the references, label to the camera
   (**write-prompt**'s product rules).
+- **Everything that must look right gets its reference in every generation it appears in** (the
+  product, its capsules or contents, a sheet's prop), never a description alone. A clip takes frames,
+  not references, so anything a clip brings in mid-shot (capsules pulled from the jar) must already
+  show in its first frame, or lock it with a `--last-frame` made from that reference. Clips also
+  add or drop held props (two capsules become four): when what's held matters, lock the end too.
+- **Check before you build on it:** when the next frame or clip starts from this one, check it
+  against its references and the shot before it (props, size, wardrobe, the action's logic) first; a
+  miss carries into everything after.
 - **Each frame picks up where the previous shot ends.** A cut changes the camera, never the moment:
   poses, hands, gaze, what each person holds and who is mid-action carry straight across. Once the
   previous clip exists, pass its last frame as a reference for continuity only ("match the poses,
