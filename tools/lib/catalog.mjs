@@ -9,7 +9,7 @@
 import { createHash } from 'node:crypto';
 import { spawn, spawnSync } from 'node:child_process';
 import { readFileSync, readdirSync, existsSync, mkdirSync, createReadStream, createWriteStream, writeFileSync, openSync, readSync, closeSync, rmSync, renameSync, statSync } from 'node:fs';
-import { homedir, hostname, setPriority, tmpdir } from 'node:os';
+import { availableParallelism, homedir, hostname, setPriority, tmpdir, totalmem } from 'node:os';
 import { join, resolve, basename, extname, delimiter, dirname, relative } from 'node:path';
 import { Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
@@ -43,7 +43,7 @@ export const have = (name) => !!findBin(name);
 
 // Setup doesn't check ffmpeg (only media work needs it), so the first ffmpeg/ffprobe call notes
 // once when it's missing or older than 8.
-export const FFMPEG_FIX = { darwin: 'run: bash tools/setup.sh', win32: 'run: winget install Gyan.FFmpeg' }[process.platform]
+export const FFMPEG_FIX = { darwin: 'run: bash tools/setup.sh', win32: 'run setup again: powershell -ExecutionPolicy Bypass -File tools\\setup.ps1' }[process.platform]
   || 'put an ffmpeg 8 static build (https://ffmpeg.org/download.html) in ~/.local/bin';
 let ffmpegNoted = false;
 function noteFfmpeg(bin) {
@@ -76,19 +76,19 @@ export function runAsync(bin, args, { allowFail = false, cwd, low = false } = {}
   });
 }
 // A file made from `src` once per version of it (path, mtime, size) and `key`, kept in <OS temp>/<cache>, or with
-// `beside` in a hidden .previews folder next to src (survives restarts; sync skips dot folders): make(tmp) writes it
-// to tmp, renamed into place so concurrent requests never see half a file. → its path.
-export function cachedPath(src, { cache, key = '', ext, beside = false }) {
+// `beside` in a hidden .previews folder next to src, named with src's size (survives restarts; sync-brand syncs its
+// .mp4s, which stay valid where src isn't: pass src's `size` then): make(tmp) writes it to tmp, renamed into place
+// so concurrent requests never see half a file. → its path.
+export function cachedPath(src, { cache, key = '', ext, beside = false, size }) {
+  if (beside) return join(dirname(src), '.previews', `${basename(src)}.${key}.${size ?? statSync(src).size}.${ext}`);
   const st = statSync(src);
-  return beside
-    ? join(dirname(src), '.previews', `${basename(src)}.${key}.${ext}`)
-    : join(tmpdir(), cache, `${createHash('sha1').update(`${src}|${st.mtimeMs}|${st.size}|${key}`).digest('hex')}.${ext}`);
+  return join(tmpdir(), cache, `${createHash('sha1').update(`${src}|${st.mtimeMs}|${st.size}|${key}`).digest('hex')}.${ext}`);
 }
 // Whether cachedFile has already made it.
-export const isCached = (src, opts) => { const out = cachedPath(src, opts); return existsSync(out) && (!opts.beside || statSync(out).mtimeMs >= statSync(src).mtimeMs); };
-export async function cachedFile(src, { cache, key = '', ext, beside = false }, make) {
-  const out = cachedPath(src, { cache, key, ext, beside });
-  if (isCached(src, { cache, key, ext, beside })) return out;
+export const isCached = (src, opts) => existsSync(cachedPath(src, opts));
+export async function cachedFile(src, opts, make) {
+  const out = cachedPath(src, opts), { ext } = opts;
+  if (existsSync(out)) return out;
   mkdirSync(dirname(out), { recursive: true });
   const tmp = `${out.slice(0, -ext.length - 1)}.${process.pid}.${Date.now()}.${ext}`;
   await make(tmp);
@@ -103,9 +103,42 @@ export function imageFitCmd(file, px, out) {
   const fit = `scale=w='min(iw,${px})':h='min(ih,${px})':force_original_aspect_ratio=decrease:force_divisible_by=2`;
   return ['ffmpeg', ['-y', '-v', 'error', '-i', file, '-frames:v', '1', '-vf', fit, '-q:v', '3', out]];
 }
-// Whether ffmpeg can decode and encode H.264 on the Mac's media engine (VideoToolbox), which spares the CPU.
-let vt;
-export const videoToolbox = () => (vt ??= process.platform === 'darwin' && /h264_videotoolbox/.test(run('ffmpeg', ['-hide_banner', '-encoders'], { allowFail: true }).stdout || ''));
+// This computer: { cores, memGB, light, encoder, decode }. light (≤4 cores or ≤8 GB): heavy video work runs one
+// job at a time. encoder: the first hardware H.264 encoder that really encodes here (one listed may still lack the
+// GPU), else libx264; decode: the matching -hwaccel, or null. Both tested once per ffmpeg version, kept in
+// ~/.cache/adpk/machine.json.
+const HW = process.platform === 'darwin' ? [['videotoolbox', 'videotoolbox']]
+  : [['nvenc', 'cuda'], ...(process.platform === 'win32' ? [['qsv', 'd3d11va'], ['amf', 'd3d11va']] : [['qsv', null], ['amf', null]])];
+const encArgs = (enc, crf, cores) => ({ // H.264 at about libx264's -crf `crf`
+  videotoolbox: ['-c:v', 'h264_videotoolbox', '-q:v', String(Math.round(100 - crf * 15 / 8)), '-pix_fmt', 'yuv420p'], // q 55 at crf 24, 70 at 16
+  nvenc: ['-c:v', 'h264_nvenc', '-rc', 'vbr', '-cq', String(crf), '-b:v', '0', '-pix_fmt', 'yuv420p'],
+  qsv: ['-c:v', 'h264_qsv', '-global_quality', String(crf), '-pix_fmt', 'nv12'],
+  amf: ['-c:v', 'h264_amf', '-rc', 'cqp', '-qp_i', String(crf), '-qp_p', String(crf), '-pix_fmt', 'nv12'],
+  libx264: ['-c:v', 'libx264', '-threads', String(cores), '-preset', 'veryfast', '-crf', String(crf), '-pix_fmt', 'yuv420p'],
+})[enc];
+let mach;
+export function machine() {
+  if (mach) return mach;
+  const cores = availableParallelism(), memGB = Math.round(totalmem() / 2 ** 30);
+  const version = (run('ffmpeg', ['-version'], { allowFail: true }).stdout || '').split('\n')[0];
+  const file = join(homedir(), '.cache', 'adpk', 'machine.json');
+  let hw;
+  try { hw = JSON.parse(readFileSync(file, 'utf8')); } catch {}
+  if (hw?.ffmpeg !== version) {
+    const ok = (a) => run('ffmpeg', ['-y', '-v', 'error', ...a], { allowFail: true }).status === 0;
+    const test = join(tmpdir(), `adpk-machine-${process.pid}.mp4`), src = ['-f', 'lavfi', '-i', 'testsrc2=s=256x256:d=0.2'];
+    const [encoder, accel] = HW.find(([enc]) => ok([...src, ...encArgs(enc, 24, 1), test])) || ['libx264', null];
+    const decode = accel && ok(['-hwaccel', accel, '-i', test, '-f', 'null', '-']) ? accel : null;
+    rmSync(test, { force: true });
+    hw = { ffmpeg: version, encoder, decode };
+    if (version) try { mkdirSync(dirname(file), { recursive: true }); writeFileSync(file, JSON.stringify(hw)); } catch {}
+  }
+  return (mach = { cores, memGB, light: cores <= 4 || memGB <= 8, encoder: hw.encoder, decode: hw.decode });
+}
+// ffmpeg output args for H.264 on machine().encoder at about libx264's -crf `crf`, pixel format included.
+export const h264Args = (crf) => encArgs(machine().encoder, crf, machine().cores);
+// ffmpeg input args that decode on the GPU when that works here (ffmpeg falls back to software per stream).
+export const hwDecode = () => (machine().decode ? ['-hwaccel', machine().decode] : []);
 // Studio's editor plays every video from a light copy this wide (Editor.js PREVIEW_W), kept beside it in .previews.
 export const PREVIEW_PX = 720;
 export const videoPreviewOpts = (px = PREVIEW_PX) => ({ cache: 'ad-production-kit-previews', key: px, ext: 'mp4', beside: true });
@@ -113,13 +146,10 @@ export const videoPreviewOpts = (px = PREVIEW_PX) => ({ cache: 'ad-production-ki
 // (`edit-video.mjs previews`), so playback never waits on them.
 export const warmPreviews = (targets) => spawn(process.execPath, [join(REPO_ROOT, 'tools', 'edit-video.mjs'), 'previews', ...targets], { detached: true, stdio: 'ignore' }).unref();
 // The command that writes a light preview copy of a video (H.264 within px wide, a keyframe every half second
-// for quick seeking, AAC sound), never upscaled: [bin, args] for run()/runAsync(). On VideoToolbox when there is
-// one, else libx264 on 4 threads.
+// for quick seeking, AAC sound), never upscaled: [bin, args] for run()/runAsync(), on the GPU when there is one.
 export function videoPreviewCmd(file, px, out) {
-  const [dec, enc] = videoToolbox() ? [['-hwaccel', 'videotoolbox'], ['-c:v', 'h264_videotoolbox', '-q:v', '55']]
-    : [['-threads', '4'], ['-c:v', 'libx264', '-threads', '4', '-preset', 'veryfast', '-crf', '24']];
-  return ['ffmpeg', ['-y', '-v', 'error', ...dec, '-i', file, '-vf', `scale='min(iw,${px})':-2`, ...enc,
-    '-g', '15', '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-b:a', '128k', '-movflags', '+faststart', out]];
+  return ['ffmpeg', ['-y', '-v', 'error', ...hwDecode(), '-i', file, '-vf', `scale='min(iw,${px})':-2`, ...h264Args(24),
+    '-g', '15', '-c:a', 'aac', '-b:a', '128k', '-movflags', '+faststart', out]];
 }
 // Note on an ad's record (outputs/json/<id>.json, beside the upload spec) where it was uploaded: sentTo[dest] = url.
 // The id is the leading number of the spec's name (the ad folder), else of its _upload_<id>.json file name.

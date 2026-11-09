@@ -264,15 +264,29 @@ const WORDS_MODEL = 'whisper-large-v3-turbo';
 const WHISPER_FILE = 'ggml-large-v3-turbo-q5_0.bin';
 const WHISPER_DIR = join(homedir(), '.cache', 'adpk', 'whisper');
 
-async function whisperModel() {
-  const path = join(WHISPER_DIR, WHISPER_FILE);
+// Setup downloads it (else the first caption run does); a cut-off download resumes from its .part.
+export async function whisperModel() {
+  const path = join(WHISPER_DIR, WHISPER_FILE), part = `${path}.part`;
   if (existsSync(path)) return path;
-  console.error(`Downloading the Whisper model (574 MB, once) to ${WHISPER_DIR}…`);
   mkdirSync(WHISPER_DIR, { recursive: true });
-  const res = await fetch(`https://huggingface.co/ggerganov/whisper.cpp/resolve/main/${WHISPER_FILE}`);
+  const done = existsSync(part) ? statSync(part).size : 0;
+  const res = await fetch(`https://huggingface.co/ggerganov/whisper.cpp/resolve/main/${WHISPER_FILE}`, { headers: done ? { Range: `bytes=${done}-` } : {} });
+  if (res.status === 416) { rmSync(part); return whisperModel(); }   // the .part doesn't fit the file: start over
   if (!res.ok) throw new Error(`Whisper model download failed: HTTP ${res.status}`);
-  await pipeline(Readable.fromWeb(res.body), createWriteStream(`${path}.part`));
-  renameSync(`${path}.part`, path);
+  const from = res.status === 206 ? done : 0, total = from + Number(res.headers.get('content-length'));
+  console.error(`Downloading the Whisper model (574 MB, once) to ${WHISPER_DIR}${from ? `, from ${Math.round(from / total * 100)}%` : ''}…`);
+  const tty = process.stderr.isTTY;
+  let got = from, shown = -1;
+  await pipeline(Readable.fromWeb(res.body), async function* (chunks) {
+    for await (const c of chunks) {
+      got += c.length;
+      const pct = Math.floor(got / total * 100);
+      if (pct !== shown && (tty || pct % 10 === 0)) { shown = pct; process.stderr.write(tty ? `\r  ${pct}%` : `  ${pct}%\n`); }
+      yield c;
+    }
+  }, createWriteStream(part, { flags: from ? 'a' : 'w' }));
+  if (tty) process.stderr.write('\n');
+  renameSync(part, path);
   return path;
 }
 
@@ -281,7 +295,7 @@ async function whisperModel() {
 // ended (punctuation tokens hold the pauses), or at whisper's own token start when that is later and
 // still before the end.
 async function whisperWords(wav, language) {
-  if (!have('whisper-cli')) throw new Error(`whisper-cli is missing (word timings for captions): run setup again (bash tools/setup.sh; Windows: tools\\setup.ps1; Linux: build it from github.com/ggml-org/whisper.cpp into ~/.local/bin)`);
+  if (!have('whisper-cli')) throw new Error(`whisper-cli is missing (word timings for captions): run setup again (bash tools/setup.sh; on Windows, powershell -ExecutionPolicy Bypass -File tools\\setup.ps1)`);
   const out = join(dirname(wav), 'words');
   run('whisper-cli', ['-m', await whisperModel(), '-f', wav, '-l', language || 'auto', '-ojf', '-of', out, '-np', '-nfa', '--dtw', 'large.v3.turbo', '-t', String(Math.min(8, availableParallelism()))]);
   return tokenWords(JSON.parse(readFileSync(`${out}.json`, 'utf8')).transcription.flatMap((s) => s.tokens));

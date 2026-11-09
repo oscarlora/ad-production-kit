@@ -2,6 +2,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { basename } from 'node:path';
 import { inferWorkspace, parseArgs, findBrandDir, die, markSent, mimeOf, typeOf, usage } from './lib/catalog.mjs';
+import { fetchMissing } from './lib/r2.mjs';
 import { notionClient, resolveBoard, boardQuery, titleOf, allPages, getSchema, findProp } from './lib/notion.mjs';
 
 const HELP = `upload-to-notion.mjs — upsert one ad/idea (matched by Name) on a brand's Notion Ads Board
@@ -115,6 +116,7 @@ const schema = await getSchema(api, board.id);
 const titleProp = findProp(schema, null, 'title');
 const idProp = findProp(schema, 'id', 'number');
 const pmap = spec.propertyMap || {};
+await fetchMissing(spec.images || []); // freed here (sync-brand --free): back from the bucket
 const missing = (spec.images || []).filter((f) => !existsSync(f));
 if (missing.length) die(`Missing local file(s): ${missing.join(', ')}`);
 

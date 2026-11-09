@@ -6,7 +6,8 @@
 // bucket), synced in full with every brand of the workspace; pass the _custom dir to sync only it.
 // Files compare by md5 vs etag (multipart etags contain '-' and count as changed). <dir>/.sync-state.json
 // records the bucket etags last seen; push refuses to overwrite files changed in the cloud since, and pull
-// keeps files changed here since (unpushed work). Dotfiles never sync. An ad folder being edited (.editing.json, see
+// keeps files changed here since (unpushed work). Dotfiles never sync, except Studio's light video preview copies
+// (.previews/*.mp4, cachedPath in lib/catalog.mjs), which sync as light files. An ad folder being edited (.editing.json, see
 // markEditing in lib/catalog.mjs) is never touched by pull; push releases it, or leaves it out when another session holds it.
 // Creds in .env: <WS>_R2_ACCOUNT_ID <WS>_R2_ACCESS_KEY_ID <WS>_R2_SECRET_ACCESS_KEY <WS>_R2_BUCKET
 // A public workspace (PUBLIC_BUCKETS in lib/r2.mjs, e.g. Shared) pulls without creds: each push
@@ -29,6 +30,9 @@ const HELP = `sync-brand.mjs — mirror a brand to/from its workspace's R2 bucke
                                                                         it, and --force reaches no further
   node tools/sync-brand.mjs --remove <brand dir> <relpath>              delete a file or folder from the bucket that is gone
                                                                         here (renamed or deleted), e.g. outputs/<old ad folder>
+  node tools/sync-brand.mjs --free <brand dir> [--dry-run]             delete heavy files here whose exact copy is in the
+                                                                        bucket (never in an ad folder being edited); tools
+                                                                        and Studio fetch them back when needed
   node tools/sync-brand.mjs --presign <brand dir> <id|relpath> [--expires 3600]   presigned GET URL for an original
   node tools/sync-brand.mjs --status <brand dir>                        local vs cloud, one-line report`;
 
@@ -39,8 +43,9 @@ const walk = (dir) => (existsSync(dir) ? readdirSync(dir, { recursive: true, wit
 
 const isCatalog = (rel) => rel.includes('/_catalog/');
 const isBrandKit = (rel) => rel.startsWith('inputs/media/brand/');
-const isHeavy = (rel) => isMedia(rel) && !isCatalog(rel) && !isBrandKit(rel);
-const isSyncable = (rel) => !rel.split('/').some((seg) => seg.startsWith('.'));
+const isPreview = (rel) => /(^|\/)\.previews\/[^/]+\.\d+\.\d+\.mp4$/.test(rel);
+const isHeavy = (rel) => isMedia(rel) && !isCatalog(rel) && !isBrandKit(rel) && !isPreview(rel);
+const isSyncable = (rel) => !(isPreview(rel) ? dirname(dirname(rel)) : rel).split('/').some((seg) => seg.startsWith('.'));
 
 function r2ForWorkspace(workspace, readOnly = false) {
   const env = loadEnv();
@@ -250,6 +255,22 @@ async function remove(path, ref) {
   console.log(`removed ${nfiles(gone.length)} under ${scope.show(rel)} from the bucket`);
 }
 
+// Deletes heavy files here that the bucket holds an exact copy of, outside ad folders being edited.
+async function free(path, dryRun) {
+  const { r2, scopes } = requireR2(path, true);
+  const scope = scopes[0], only = onlyFor(path, scope.dir), locks = editing(scope), remote = await remoteByRel(r2, scope);
+  let n = 0, mb = 0, kept = 0;
+  for (const f of selected(scope, true)) {
+    const rel = relOf(scope.dir, f);
+    if (!scope.heavy(rel) || !inside(only, rel) || under(locks, rel)) continue;
+    const o = remote.get(rel);
+    if (!o || !(await sameContent(f, o))) { kept++; continue; }
+    if (!dryRun) rmSync(f);
+    n++; mb += o.size / 1e6;
+  }
+  console.log(`${dryRun ? 'would free' : 'freed'} ${nfiles(n)} (${Math.round(mb)} MB)${kept ? ` · kept ${nfiles(kept)} not in the bucket as is (push --originals first)` : ''}`);
+}
+
 async function presign(path, ref, expires) {
   if (!ref) usage(HELP);
   const { r2, scopes } = requireR2(path, true);
@@ -334,14 +355,14 @@ async function listBrands(workspace) {
   console.log(`Pull one with: node tools/sync-brand.mjs --pull "workspaces/${workspace}/<Brand>"`);
 }
 
-const a = parseArgs(process.argv.slice(2), { flags: ['originals', 'force'], help: HELP });
+const a = parseArgs(process.argv.slice(2), { flags: ['originals', 'force', 'dry-run'], help: HELP });
 if (a.brands) {
   const ws = workspaceFrom(a.brands === true ? a._[0] || '' : a.brands);
   if (!ws) usage(HELP);
   await listBrands(ws);
   process.exit(0);
 }
-const dir = a.push || a.pull || a.presign || a.status || a.remove;
+const dir = a.push || a.pull || a.presign || a.status || a.remove || a.free;
 const path = dir && dir !== true ? dir : a._[0] || null;
 if (!path) usage(HELP);
 if (a.pull) await pull(path, !!a.originals, !!a.force);
@@ -349,4 +370,5 @@ else if (a.push) await push(path, !!a.originals, !!a.force);
 else if (a.remove) await remove(path, a.remove === true ? a._[1] : a._[0]);
 else if (a.presign) await presign(path, a.presign === true ? a._[1] : a._[0], a.expires ? +a.expires : 3600);
 else if (a.status) await status(path);
+else if (a.free) await free(path, !!a['dry-run']);
 else usage(HELP);

@@ -3,8 +3,8 @@
 // media/ and write its skeleton record. analyze-media fills the descriptions.
 //
 // Images use `sips` on macOS, ffmpeg elsewhere; video/audio use ffmpeg. A missing tool still yields a
-// record, without derivatives. A video is decoded once (videoPass), on VideoToolbox where possible; at
-// most MEDIA_JOBS videos (default 2) are worked at once.
+// record, without derivatives. A video is decoded once (videoPass), on the GPU where possible; at
+// most MEDIA_JOBS videos (default 2, 1 on a light computer) are worked at once.
 // Near-duplicates (re-exports) are skipped conservatively:
 //   image — perceptual hash close in any rotation AND the pixels match.
 //   video — duration within 0.05 s AND (same original name, or matching frame hashes).
@@ -16,7 +16,7 @@
 import { statSync, writeFileSync, existsSync, copyFileSync, readdirSync, readFileSync, mkdirSync, mkdtempSync, rmSync, renameSync, constants } from 'node:fs';
 import { join, basename, extname, relative, sep } from 'node:path';
 import { tmpdir } from 'node:os';
-import { catalogPaths, ensureDirs, typeOf, mimeOf, hashFile, readRecords, writeRecord, mergeRecord, isMedia, slugify, have, run, runAsync, ffprobeJson, imageFitCmd, pcm, round, FFMPEG_FIX } from './catalog.mjs';
+import { catalogPaths, ensureDirs, typeOf, mimeOf, hashFile, readRecords, writeRecord, mergeRecord, isMedia, slugify, have, run, runAsync, ffprobeJson, imageFitCmd, pcm, round, FFMPEG_FIX, machine, hwDecode } from './catalog.mjs';
 import { readDriveSources } from './drive.mjs';
 import { INLINE_MAX } from './analyze.mjs';
 
@@ -25,7 +25,7 @@ const HAS_SIPS = have('sips');
 const RESERVED = new Set(['brand', '_catalog']); // folders the catalog never reads (see lib/catalog.mjs)
 
 // ---------- heavy-work pool + hardware decoding ----------
-const jobLimit = () => Math.max(1, parseInt(process.env.MEDIA_JOBS, 10) || 2);
+const jobLimit = () => Math.max(1, parseInt(process.env.MEDIA_JOBS, 10) || (machine().light ? 1 : 2));
 let active = 0;
 const waiting = [];
 // At most MEDIA_JOBS heavy video jobs at once, shared by probe and analyze.
@@ -34,12 +34,9 @@ export async function heavy(fn) {
   try { return await fn(); } finally { const next = waiting.shift(); if (next) next(); else active--; }
 }
 
-let VT = null;
-const hasVT = () => (VT ??= process.platform === 'darwin' && HAS_FFMPEG && /videotoolbox/.test(run('ffmpeg', ['-hide_banner', '-hwaccels'], { allowFail: true }).stdout || ''));
-const HW = ['-hwaccel', 'videotoolbox'];
 // One frame at t s; `post` = the ffmpeg args after the input. Returns run()'s result, or null.
 function grab(file, t, post, opts = {}) {
-  for (const hw of hasVT() ? [HW, []] : [[]]) {
+  for (const hw of hwDecode().length ? [hwDecode(), []] : [[]]) {
     const r = run('ffmpeg', ['-y', '-v', 'error', ...hw, '-ss', String(t), '-i', file, '-frames:v', '1', ...post], { allowFail: true, ...opts });
     if (r.status === 0) return r;
   }
@@ -111,8 +108,9 @@ export async function videoPass(file, meta, { scenes = false, sprite = null, wor
     const short = Math.min(meta.codedW, meta.codedH), k = short > base ? base / short : 1;
     const even = (n) => Math.max(2, Math.round(n / 2) * 2);
     const attempts = [];
-    if (hasVT() && DOWNLOAD[meta.pixFmt] && short) attempts.push([[...HW, '-hwaccel_output_format', 'videotoolbox_vld', '-noautorotate'], `scale_vt=w=${even(meta.codedW * k)}:h=${even(meta.codedH * k)},hwdownload,format=${DOWNLOAD[meta.pixFmt]},format=yuv420p${TURN[meta.rot] || ''}`]);
-    if (hasVT()) attempts.push([HW, SHORT(base)]);
+    const dec = hwDecode();
+    if (dec[1] === 'videotoolbox' && DOWNLOAD[meta.pixFmt] && short) attempts.push([[...dec, '-hwaccel_output_format', 'videotoolbox_vld', '-noautorotate'], `scale_vt=w=${even(meta.codedW * k)}:h=${even(meta.codedH * k)},hwdownload,format=${DOWNLOAD[meta.pixFmt]},format=yuv420p${TURN[meta.rot] || ''}`]);
+    if (dec.length) attempts.push([dec, SHORT(base)]);
     attempts.push([[], SHORT(base)]);
     let r;
     for (const [hw, pre] of attempts) {

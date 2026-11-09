@@ -5,7 +5,7 @@
 // zscale + tonemap (hable), else a plain BT.2020 -> BT.709 colorspace conversion. Works with the macOS
 // (martin-riedl) and Windows (gyan.dev) ffmpeg builds setup installs.
 import { renameSync, rmSync, statSync } from 'node:fs';
-import { ffprobeJson, run, runAsync, cachedFile, typeOf, videoToolbox } from './catalog.mjs';
+import { ffprobeJson, run, runAsync, cachedFile, typeOf, h264Args, hwDecode } from './catalog.mjs';
 
 // HDR when the transfer is HLG or PQ, or the primaries are BT.2020. → 'hlg' | 'pq' | 'bt2020' | null
 export function hdrKind(file) {
@@ -49,12 +49,11 @@ export function toneFilter(kind, how = toneMethod()) {
   return `colorspace=all=bt709:iall=bt2020:itrc=bt2020-10:format=yuv420p`; // no tone mapping: highlights clip, colours roughly right
 }
 
-// Light on a laptop: decode and encode on the Mac's media engine (VideoToolbox) when there is one, else libx264
-// on 4 threads; the tone-map filters on 2; the whole job at the lowest CPU priority (sdrSource).
-export const sdrCmd = (file, out, kind = kindOf(file)) => ['ffmpeg', ['-y', '-v', 'error', ...(videoToolbox() ? ['-hwaccel', 'videotoolbox'] : ['-threads', '4']),
-  '-filter_threads', '2', '-i', file, '-map', '0:v:0', '-map', '0:a:0?', '-vf', toneFilter(kind),
-  ...(videoToolbox() ? ['-c:v', 'h264_videotoolbox', '-q:v', '70'] : ['-c:v', 'libx264', '-threads', '4', '-preset', 'veryfast', '-crf', '16']),
-  '-g', '30', '-pix_fmt', 'yuv420p', '-color_primaries', 'bt709', '-color_trc', 'bt709', '-colorspace', 'bt709', '-color_range', 'tv',
+// Light on a laptop: decode and encode on the GPU when there is one (catalog.mjs machine()); the tone-map filters
+// on 2 threads; the whole job at the lowest CPU priority (sdrSource).
+export const sdrCmd = (file, out, kind = kindOf(file)) => ['ffmpeg', ['-y', '-v', 'error', ...hwDecode(),
+  '-filter_threads', '2', '-i', file, '-map', '0:v:0', '-map', '0:a:0?', '-vf', toneFilter(kind), ...h264Args(16),
+  '-g', '30', '-color_primaries', 'bt709', '-color_trc', 'bt709', '-colorspace', 'bt709', '-color_range', 'tv',
   '-c:a', 'copy', '-movflags', '+faststart', out]];
 
 // The file to decode frames from: an HDR video's SDR copy (made once, cached in <OS temp>), else the file itself.

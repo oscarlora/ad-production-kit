@@ -1,8 +1,8 @@
 #!/bin/bash
 # setup.sh — install and first-run setup on macOS and Linux: idempotent, no admin password, no keys.
-# Downloads ADPK when run outside it, installs Node (and on macOS ffmpeg 8 and whisper.cpp) under
-# ~/.local when missing, the npm deps, the shared library's catalog and the git hooks, then the next step
-# (the kie key: skills/set-up-adpk). Any failure stops it with a plain-language fix.
+# Downloads ADPK when run outside it, installs Node, whisper.cpp and its model (and on macOS ffmpeg 8)
+# under ~/.local when missing, the npm deps, the shared library's catalog and the git hooks, then the next
+# step (the kie key: skills/set-up-adpk). Any failure stops it with a plain-language fix.
 # Updating an install: AGENTS.md.
 #
 # Usage: curl -fsSL https://raw.githubusercontent.com/oscarlora/ad-production-kit/main/tools/setup.sh | bash
@@ -83,7 +83,8 @@ install_node() {
   case "$(uname -s)" in
     Darwin) os=darwin ;;
     Linux)  os=linux ;;
-    *) fail "This setup runs on macOS and Linux." "On Windows, ask your AI agent to set up ADPK (see the README)." ;;
+    *) fail "This setup runs on macOS and Linux." "On Windows, run this in PowerShell instead:" \
+         "powershell -ExecutionPolicy Bypass -c \"irm https://raw.githubusercontent.com/oscarlora/ad-production-kit/main/tools/setup.ps1 | iex\"" ;;
   esac
   case "$(uname -m)" in
     x86_64 | amd64)  arch=x64 ;;
@@ -177,24 +178,31 @@ install_ffmpeg() {
   fi
 }
 
-# ── whisper.cpp on macOS (word timings for captions): Homebrew's when present, else built from
-# source into ~/.local/bin with a throwaway CMake (Apple's command line tools compile it). Its model
-# downloads on first use; elsewhere the caption tools say how to get it.
+# ── whisper.cpp (word timings for captions): Homebrew's on macOS when present, else built from source
+# into ~/.local/bin with a throwaway CMake (on macOS, Apple's command line tools compile it).
 install_whisper() {
-  [ "$(uname)" = Darwin ] && ! command -v whisper-cli >/dev/null 2>&1 || return 0
-  if command -v brew >/dev/null 2>&1 && brew install whisper-cpp >"$LOG" 2>&1; then
-    ok "Installed whisper.cpp (captions)"; return
+  command -v whisper-cli >/dev/null 2>&1 && return 0
+  local tmp cm_url tag cm platform
+  if [ "$(uname)" = Darwin ]; then
+    if command -v brew >/dev/null 2>&1 && brew install whisper-cpp >"$LOG" 2>&1; then
+      ok "Installed whisper.cpp (captions)"; return
+    fi
+    need_git; platform=macos-universal
+  elif ! { command -v c++ || command -v g++; } >/dev/null 2>&1 || ! command -v make >/dev/null 2>&1; then
+    warn "whisper.cpp (captions) needs a C++ compiler. Install one, then run this setup again:"
+    echo "    sudo apt install build-essential (Ubuntu, Debian) or sudo dnf groupinstall \"Development Tools\" (Fedora)"
+    return 0
+  else
+    platform=linux-$(uname -m)   # x86_64 or aarch64
   fi
-  need_git
-  echo "  Building whisper.cpp (captions) into ~/.local/bin, about a minute…"
-  local tmp cm_url tag cm
+  echo "  Building whisper.cpp (captions) into ~/.local/bin, a minute or two…"
   tmp=$(mktemp -d)
-  cm_url=$(curl -fsSL https://api.github.com/repos/Kitware/CMake/releases/latest | grep -oE 'https://[^"]+-macos-universal\.tar\.gz' | head -1)
+  cm_url=$(curl -fsSL https://api.github.com/repos/Kitware/CMake/releases/latest | grep -oE "https://[^\"]+-$platform\.tar\.gz" | head -1)
   tag=$(curl -fsSL https://api.github.com/repos/ggml-org/whisper.cpp/releases/latest | grep -oE '"tag_name": *"v[0-9.]+"' | grep -oE 'v[0-9.]+')
   if [ -n "$cm_url" ] && [ -n "$tag" ] \
     && curl -fsSL "$cm_url" | tar -xz -C "$tmp" \
     && curl -fsSL "https://github.com/ggml-org/whisper.cpp/archive/refs/tags/$tag.tar.gz" | tar -xz -C "$tmp"; then
-    cm=$(echo "$tmp"/cmake-*/CMake.app/Contents/bin/cmake)
+    cm=$(ls "$tmp"/cmake-*/CMake.app/Contents/bin/cmake "$tmp"/cmake-*/bin/cmake 2>/dev/null | head -1)
     "$cm" -S "$(echo "$tmp"/whisper.cpp-*)" -B "$tmp/build" -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=OFF \
         -DWHISPER_BUILD_TESTS=OFF -DWHISPER_BUILD_SERVER=OFF >"$LOG" 2>&1 \
       && "$cm" --build "$tmp/build" -j --config Release --target whisper-cli >"$LOG" 2>&1 \
@@ -217,6 +225,12 @@ main() {
   case "$(command -v node) $(command -v ffmpeg) $(command -v whisper-cli)" in *"$HOME/.local/"*) add_to_path ;; esac
   npm_deps . "ADPK's tools" "ADPK's tools"
   npm_deps studio "the studio app" "Studio app"
+  # Whisper's model (574 MB) downloads now so captions never wait on it; a cut-off download resumes.
+  if command -v whisper-cli >/dev/null 2>&1; then
+    node -e "import('./tools/lib/transcribe.mjs').then((m) => m.whisperModel())" </dev/null \
+      && ok "Whisper model ready (captions)" \
+      || warn "The Whisper model didn't finish downloading: run this setup again later to carry on."
+  fi
   # The shared library's catalog only: its files download when an ad uses one (fetchMissing, lib/r2.mjs).
   node tools/sync-brand.mjs --pull workspaces/Shared/Library </dev/null >"$LOG" 2>&1 \
     && ok "Shared library ready (music, sound effects, references; each file downloads when used)" \
@@ -224,11 +238,12 @@ main() {
   # Blocks commits that mention a client workspace or brand (the repo is public).
   git config core.hooksPath .githooks 2>/dev/null
   echo
+  printf "ADPK lives in %s for good: don't move or rename that folder.\n" "$(pretty "$PWD")"
   if grep -qsE '^[A-Za-z0-9_]+_KIE_API_KEY=.+' .env; then
-    ok "ADPK is ready in $(pretty "$PWD")."
+    ok "ADPK is ready."
   else
-    printf "ADPK is installed in %s. One step left: open your AI agent in that folder and say\n" "$(pretty "$PWD")"
-    printf "\"Finish setting up ADPK\". It helps you add your kie.ai key, the one key you need to start.\n"
+    echo "One step left: open your AI agent in that folder and say \"Finish setting up ADPK\"."
+    echo "It helps you add your kie.ai key, the one key you need to start."
   fi
   return 0
 }

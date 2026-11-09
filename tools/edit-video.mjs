@@ -260,7 +260,7 @@ function previewJobs(target) {
   const jobs = new Map();
   for (const { abs, rate } of clips) {
     const type = existsSync(abs) && typeOf(abs);
-    if (type === 'video') jobs.set(`${abs}|copy`, { label: `${basename(abs)} copy`, ready: () => isCached(abs, videoPreviewOpts()), make: () => cachedFile(abs, videoPreviewOpts(), (tmp) => runAsync(...videoPreviewCmd(abs, PREVIEW_PX, tmp), { low: true })) });
+    if (type === 'video') jobs.set(`${abs}|copy`, { label: `${basename(abs)} copy`, ready: () => isCached(abs, videoPreviewOpts()), make: () => cachedFile(abs, videoPreviewOpts(), async (tmp) => runAsync(...videoPreviewCmd(await sdrSource(abs), PREVIEW_PX, tmp), { low: true })) });
     if (type === 'video' || type === 'audio') jobs.set(`${abs}|${rate}`, { label: `${basename(abs)} sound ×${rate}`, ready: () => isCached(abs, tempoOpts(rate)), make: () => stretched(abs, rate) });
   }
   return [...jobs.values()];

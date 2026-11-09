@@ -17,7 +17,12 @@ if (!ws) usage(HELP);
 const W = ws.toUpperCase();
 const env = loadEnv();
 const key = env[`${W}_KIE_API_KEY`];
-if (!key) die(`${W}_KIE_API_KEY isn't set in .env: get a key at https://kie.ai/api-key and paste it after the =.`);
+if (!key) {
+  const named = Object.keys(env).filter((k) => k.endsWith('_KIE_API_KEY') && env[k]);
+  die(`${W}_KIE_API_KEY isn't set in .env. ` + (named.length
+    ? `Found ${named.join(', ')}: the name must start with the workspace folder's name in capitals, ${W}_KIE_API_KEY.`
+    : 'Get a key at https://kie.ai/api-key and paste it after the =.'));
+}
 
 process.env.KIE_API_KEY = key;
 const json = await kie('/api/v1/chat/credit').catch((e) => ({ msg: e.message }));

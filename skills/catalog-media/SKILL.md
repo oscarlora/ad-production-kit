@@ -34,6 +34,10 @@ Flags: `--help`. Re-running is safe: cataloged files and near-duplicate re-expor
 logged with its reason), failed analyses retry, and a Drive folder pulls incrementally (**pull-media**),
 so the same command can run on a schedule. Run it as one job with a generous timeout.
 
+A folder can be anywhere (another drive too): its files are copied in and, with R2 keys, pushed, so
+afterwards the user can delete it, and `node tools/sync-brand.mjs --free <brand dir>` deletes the local
+copies the bucket holds (Studio streams them; tools fetch them back).
+
 Pass `--generated` for what ADPK made, `--swipe` for ads or posts to replicate (**replicate-ad**;
 kept out of footage searches). A folder **pull-media** downloaded into keeps each file's link
 as its source.

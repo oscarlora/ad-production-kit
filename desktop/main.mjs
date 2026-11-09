@@ -154,7 +154,7 @@ async function open() {
 
   try {
     const url = await startStudio(adpk, (line) => {
-      if (/building|rebuilding|takes a minute/i.test(line)) win?.webContents.executeJavaScript(`document.getElementById('t').textContent = ${JSON.stringify('Getting Studio ready (about a minute, only after an update)…')}`).catch(() => {});
+      if (/building|rebuilding|takes a minute/i.test(line)) win?.webContents.executeJavaScript(`document.getElementById('t').textContent = ${JSON.stringify('Getting Studio ready (a few minutes, only after an update)…')}`).catch(() => {});
     });
     // dev.mjs prints the address just before the server listens.
     for (let i = 0; i < 120 && !(await answers(`${url}/app`)); i++) await new Promise((r) => setTimeout(r, 500));

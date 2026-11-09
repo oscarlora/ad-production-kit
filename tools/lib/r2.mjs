@@ -156,6 +156,10 @@ export function r2Public(env, workspace) {
       if (!res.ok) throw new Error(`GET ${key} -> HTTP ${res.status}`);
       return Buffer.from(await res.arrayBuffer());
     },
+    async head(key) {
+      const res = await fetch(url(key), { method: 'HEAD' });
+      return res.ok ? { size: Number(res.headers.get('content-length') || 0) } : null;
+    },
     async listWithMeta(prefix = '') {
       const res = await fetch(url(`${prefix.split('/')[0]}/${MANIFEST}`));
       if (res.status === 404) return [];
@@ -166,16 +170,15 @@ export function r2Public(env, workspace) {
   };
 }
 
-
-// Media originals missing here (a light pull) download from their workspace's bucket when a tool
-// needs them; anything else, or a workspace without a bucket, is left as it is.
+// Brand files missing here (a light pull, or sync-brand --free) download from their workspace's bucket when a
+// tool needs them; anything else, or a workspace without a bucket, is left as it is.
 export async function fetchMissing(paths) {
   for (const p of [paths].flat().filter(Boolean)) {
     const abs = resolve(String(p));
     if (/^https?:\/\//i.test(String(p)) || existsSync(abs)) continue;
     const brand = inferBrand(abs);
     const rel = brand && relative(brandDirFrom(abs), abs).replace(/\\/g, '/');
-    if (!rel?.startsWith('inputs/media/')) continue;
+    if (!/^(inputs|outputs)\//.test(rel || '')) continue;
     const env = loadEnv(), ws = inferWorkspace(abs);
     const r2 = r2FromEnv(env, ws) || r2Public(env, ws);
     const buf = r2 && await r2.get(`${brand}/${rel}`).catch(() => null);

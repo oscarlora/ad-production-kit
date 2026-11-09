@@ -83,7 +83,7 @@ every ID, `AC ad 11 + 12 – …`), start its .md with a **CONCEPT** section, an
 Workflow page without asking (**open-studio**; the user watches each step land there and edits there).
 Then reply with the plan: the steps in order, what you'll ask them, and that they can watch it in Studio. Then follow its workflow:
 
-- **make-image-ad** — image ads
+- **make-image-ad** — image ads, static or animated GIF
 - **make-ai-podcast** — podcast video ads
 - **make-ai-song** — song video ads
 - **make-ai-animation** — animated video ads, narrated or dialogue
@@ -131,13 +131,14 @@ Steps (each owns its procedure and rules):
   1080p keeps the approved take exactly. Never enlarge or upscale a take, or use it as a reference.
 - **Long renders** run in the foreground with `--timeout`. One that may outlast the shell's limit
   runs as a tracked background command with a log; a killed render loses a paid task.
-- **Brand data syncs through R2 when the workspace has R2 keys** (teams need it; solo is optional).
+- **Brand data syncs through R2 when the workspace has R2 keys** (recommended for everyone; teams need it).
   Pull before working a brand (`node tools/sync-brand.mjs --pull workspaces/<WS>/<Brand>`;
-  `--originals` adds heavy media, which tools otherwise download one by one when they read it;
-  `--brands <WS>` lists brands) and push when done (`--push`). Push
-  never deletes: after renaming or deleting a folder, clear the old one with `--remove <brand dir>
-  <relpath>`. R2 is last-write-wins, so pull before you edit; pull never touches an ad being edited
-  here. Without R2 keys, everything stays local.
+  `--originals` adds heavy media, which tools otherwise download one by one when they read it and
+  Studio streams, playing videos from their synced light copies; `--brands <WS>` lists brands) and
+  push when done (`--push`). `--free <brand dir>` deletes heavy files the bucket has an exact copy of,
+  keeping the computer light. Push never deletes: after renaming or deleting a folder, clear the old
+  one with `--remove <brand dir> <relpath>`. R2 is last-write-wins, so pull before you edit; pull and
+  `--free` never touch an ad being edited here. Without R2 keys, everything stays local.
 - **Private brand data never goes in tracked files.** Examples use the placeholder brand Acme. A
   brand's rules go in its `memory.md` (**save-brand-memory**). Commit hooks (`tools/check-public.mjs`)
   block local workspace and brand names and the terms in `_custom/private-terms.txt`, in files and

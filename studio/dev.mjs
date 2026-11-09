@@ -1,13 +1,40 @@
-// Studio launcher: runs the built app, rebuilding only when the source changed.
-// Usage: node studio/dev.mjs [--dev]   (--dev = `next dev` with hot reload; env PORT, STUDIO_HOST)
+// Studio launcher: runs the built app; when the source changed, downloads its ready-made build or builds it here.
+// Usage: node studio/dev.mjs [--dev | --stamp]   (--dev = `next dev` with hot reload; --stamp = print the
+// source fingerprint; env PORT, STUDIO_HOST)
 // Default is a production build because `next dev`'s route table drifts and some API routes start answering 404.
 import { spawn, spawnSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { existsSync, readdirSync, statSync, readFileSync, writeFileSync, mkdirSync, rmSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { dirname, join } from 'node:path';
+import { dirname, join, relative, sep } from 'node:path';
 import net from 'node:net';
 
 const here = dirname(fileURLToPath(import.meta.url));
+
+// Source fingerprint: a hash of the app's source files, the same on every computer. It decides when to rebuild and
+// names the ready-made build (.github/workflows/studio-build.yml).
+function sourceStamp() {
+  const hash = createHash('sha256');
+  // Sorted so every OS walks the same order; dot-entries (.next*, .gitignore) and node_modules skipped.
+  const walk = (dir) => {
+    for (const e of readdirSync(dir, { withFileTypes: true }).sort((a, b) => (a.name < b.name ? -1 : 1))) {
+      if (e.name.startsWith('.') || e.name === 'node_modules') continue;
+      const p = join(dir, e.name);
+      if (e.isDirectory()) walk(p);
+      else if (/\.(js|jsx|ts|tsx|css|json|mjs)$/.test(e.name)) {
+        // CRLF folded: a Windows checkout may convert line endings.
+        try { hash.update(`${relative(here, p).split(sep).join('/')}\0${readFileSync(p, 'utf8').replace(/\r\n/g, '\n')}\0`); } catch { /* vanished mid-walk */ }
+      }
+    }
+  };
+  walk(here);
+  return hash.digest('hex').slice(0, 16);
+}
+if (process.argv.includes('--stamp')) {
+  console.log(sourceStamp());
+  process.exit(0);
+}
+
 const requestedPort = process.env.PORT || '4179';
 const next = join(here, 'node_modules', 'next', 'dist', 'bin', 'next');
 const devMode = process.argv.includes('--dev');
@@ -61,24 +88,22 @@ if (!/--use-system-ca/.test(env.NODE_OPTIONS || '')) env.NODE_OPTIONS = `${env.N
 const distDir = env.NEXT_DIST_DIR || '.next';
 const stampFile = join(here, distDir, '.source-stamp');
 
-// Build fingerprint: file count + newest mtime across the app's source.
-function sourceStamp() {
-  let newest = 0;
-  let files = 0;
-  // Skip dot-entries (.next*, .git, .source-stamp).
-  const walk = (dir) => {
-    let entries = [];
-    try { entries = readdirSync(dir, { withFileTypes: true }); } catch { return; }
-    for (const e of entries) {
-      if (e.name.startsWith('.') || e.name === 'node_modules') continue;
-      const p = join(dir, e.name);
-      if (e.isDirectory()) { walk(p); continue; }
-      if (!/\.(js|jsx|ts|tsx|css|json|mjs)$/.test(e.name)) continue;
-      try { const s = statSync(p); newest = Math.max(newest, s.mtimeMs); files++; } catch { /* vanished mid-walk */ }
-    }
-  };
-  walk(here);
-  return `${files}:${Math.round(newest)}`;
+// Unpacks the ready-made build of exactly this source into distDir. Returns why it couldn't, or '' on success.
+async function download(stamp) {
+  let body;
+  try {
+    const r = await fetch(`https://github.com/oscarlora/ad-production-kit/releases/download/studio-build/studio-${stamp}.tar.gz`,
+      { signal: AbortSignal.timeout(60_000) });
+    if (!r.ok) return r.status === 404 ? 'no ready-made build for this version' : `the download failed (HTTP ${r.status})`;
+    body = Buffer.from(await r.arrayBuffer());
+  } catch {
+    return "couldn't download the ready-made build";
+  }
+  rmSync(join(here, distDir), { recursive: true, force: true });
+  mkdirSync(join(here, distDir));
+  // Relative paths: Git Bash's tar reads "C:" in a Windows path as a remote host.
+  const t = spawnSync('tar', ['-xzf', '-', '-C', distDir], { cwd: here, input: body });
+  return t.status === 0 ? '' : "couldn't unpack the ready-made build";
 }
 
 const run = (args, label) => {
@@ -112,10 +137,12 @@ if (devMode) {
   const built = existsSync(join(here, distDir, 'BUILD_ID'));
 
   if (!built || prior !== stamp) {
-    console.log(built ? 'Studio: the app changed, rebuilding once.' : 'Studio: first run, building the app once.');
-    console.log('This takes a minute. Every start after this is immediate until the app changes again.\n');
-    run(['build'], 'build');
-    try { mkdirSync(join(here, distDir), { recursive: true }); writeFileSync(stampFile, stamp); } catch { /* optional */ }
+    const why = await download(stamp);
+    if (why) {
+      console.log(`Studio: ${why}, so building Studio on this computer, a few minutes. Only once per update.\n`);
+      run(['build'], 'build');
+    } else console.log('Studio: downloaded the ready-made build.');
+    try { writeFileSync(stampFile, stamp); } catch { /* optional */ }
   }
 
   console.log(`\nStudio on http://${shownHost}:${port}\n`);

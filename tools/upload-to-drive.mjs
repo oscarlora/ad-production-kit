@@ -2,6 +2,7 @@
 import { existsSync } from 'node:fs';
 import { basename } from 'node:path';
 import { parseArgs, die, markSent, usage } from './lib/catalog.mjs';
+import { fetchMissing } from './lib/r2.mjs';
 import { driveApi, listChildren, findChild, createFolder, brandFolders, driveForSpec, resolveGroupFolder, uploadFile } from './lib/drive.mjs';
 
 const HELP = `upload-to-drive.mjs — upload approved ad files to <workspace Drive folder>/<brand>/<ad group>/
@@ -40,6 +41,7 @@ if (args.list) {
 }
 
 const files = spec.images || [];
+await fetchMissing(files); // freed here (sync-brand --free): back from the bucket
 const missing = files.filter((f) => !existsSync(f));
 if (missing.length) die(`Missing local file(s): ${missing.join(', ')}`);
 const group = spec.driveSubfolder || spec.name;

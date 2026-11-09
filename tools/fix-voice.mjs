@@ -7,7 +7,8 @@ import { basename, dirname, extname, join, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
-import { die, inferWorkspace, parseArgs, round, run, sleep, usage, wsKey } from './lib/catalog.mjs';
+import { die, h264Args, inferWorkspace, machine, parseArgs, round, run, sleep, usage, wsKey } from './lib/catalog.mjs';
+import { fetchMissing } from './lib/r2.mjs';
 
 const HELP = `fix-voice.mjs — clean a speaker's voice and re-say mumbled words (ElevenLabs, Resemble Enhance).
 
@@ -17,11 +18,13 @@ const HELP = `fix-voice.mjs — clean a speaker's voice and re-say mumbled words
       under it, EQ'd, compressed and leveled to --lufs LUFS. Use when background noise gets in the way.
       Needs <WS>_ELEVENLABS_API_KEY; without one, use enhance below (local, no key).
       --remux: for a video clip, also write <dir>/<name>.mp4 with the clean audio (video stream copied).
-  node tools/fix-voice.mjs enhance <clip>... --out <dir> [--lufs -14] [--nfe 32] [--remux]
+  node tools/fix-voice.mjs enhance <clip>... --out <dir> [--lufs -14] [--nfe 32] [--remux] [--local]
       "Pro mic" restoration with Resemble Enhance (local, Mac and Windows, Python 3.10/3.11): denoises,
       removes room tone and rebuilds a full-band 44.1 kHz studio voice → <dir>/<name>.wav at --lufs LUFS.
       Heavy: ~2x real time on 8 CPU cores, faster on Apple MPS / CUDA. Run it when the computer is idle,
       or on a spare machine. First run creates tools/.venv-enhance and downloads the model (~1 GB).
+      On a light computer (4 cores or fewer, or 8 GB or less) it runs isolate instead when the
+      workspace has an ElevenLabs key; --local runs enhance anyway.
       --remux: for a video clip, also write <dir>/<name>.mp4 (video stream copied).
   node tools/fix-voice.mjs clone --name "<speaker>" <clip>... [--out <dir>]
       Instant voice clone from the speaker's clearest clips (same room as the patch). Prints the voice id;
@@ -37,8 +40,9 @@ const HELP = `fix-voice.mjs — clean a speaker's voice and re-say mumbled words
 const wsKeyOrNull = (p) => { const ws = inferWorkspace(p); return ws ? wsKey(ws, 'ELEVENLABS_API_KEY') : null; };
 const hasVideo = (f) => /video/.test(run('ffprobe', ['-v', 'error', '-select_streams', 'v', '-show_entries', 'stream=codec_type', '-of', 'csv=p=0', f], { allowFail: true }).stdout || '');
 
-const args = parseArgs(process.argv.slice(2), { help: HELP });
+const args = parseArgs(process.argv.slice(2), { flags: ['remux', 'local'], help: HELP });
 const [cmd, ...rest] = args._;
+await fetchMissing(rest);
 const SR = 44100;
 const LUFS = () => +(args.lufs ?? -16);
 const FINISH = () => 'highpass=f=90,equalizer=f=300:t=q:w=1:g=-2.5,equalizer=f=3500:t=q:w=1.2:g=3,'
@@ -118,6 +122,10 @@ function installEnhance() {
 async function enhance() {
   const out = resolve(args.out || usage(HELP));
   if (!rest.length) usage(HELP);
+  if (machine().light && !args.local) {
+    if (wsKeyOrNull(out)) { console.log('This computer is light: using ElevenLabs isolate instead (--local runs enhance anyway).'); args.lufs ??= -14; return isolate(); }
+    console.log('Enhance is slow on this computer: it takes several times the length of the audio.');
+  }
   const py = installEnhance(), helper = join(TOOLS, 'lib', 'enhance_voice.py');
   mkdirSync(join(out, 'raw'), { recursive: true });
   for (const f of rest) {
@@ -181,7 +189,7 @@ async function patch() {
     const out = join(dir, `${name}-fix-${tag}.wav`);
     writeWav(out, x, FINISH());
     rmSync(trimmed); rmSync(fitted);
-    if (args.video) ff(['-i', args.video, '-i', out, '-map', '0:v', '-map', '1:a', '-vf', 'scale=540:-2', '-c:v', 'libx264', '-crf', '23', '-preset', 'veryfast', '-c:a', 'aac', '-b:a', '192k', '-shortest', out.replace(/\.wav$/, '.mp4')]);
+    if (args.video) ff(['-i', args.video, '-i', out, '-map', '0:v', '-map', '1:a', '-vf', 'scale=540:-2', ...h264Args(23), '-c:a', 'aac', '-b:a', '192k', '-shortest', out.replace(/\.wav$/, '.mp4')]);
     console.log(`take ${tag}    ${out}  (played at ${round(tempo)}x its natural pace)`);
   }
 }

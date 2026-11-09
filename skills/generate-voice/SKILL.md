@@ -78,7 +78,8 @@ ask for it only when this fix comes up (they paste it into `.env`):
   computer (free, nothing uploaded, Mac and Windows, Python 3.10/3.11), denoises, removes room tone and
   rebuilds a full-band voice, leveled to `--lufs` (-14 default). `enhance <final>.mp4 --out <dir> --remux`
   writes `<dir>/<name>.mp4` with the video stream copied. Heavy (~2x real time on 8 CPU cores): run it
-  when the computer is idle or on a spare machine. The first run creates the gitignored
+  when the computer is idle or on a spare machine. On a light computer it runs `isolate` instead when there's a key
+  (`--local` forces enhance). The first run creates the gitignored
   `tools/.venv-enhance` and downloads the model (~1 GB).
 - **`clone`** once per speaker, from their clearest clips in the same room; keep the voice id in the
   brand's `memory.md`.

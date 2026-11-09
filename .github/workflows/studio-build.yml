@@ -1,0 +1,37 @@
+# Builds Studio on every change and attaches it to the studio-build release, named by its source fingerprint,
+# so studio/dev.mjs downloads it instead of building on the user's computer.
+name: Studio build
+on:
+  push:
+    branches: [main]
+    paths: ['studio/**', '.github/workflows/studio-build.yml']
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency: studio-build
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+      NEXT_TELEMETRY_DISABLED: 1
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: studio/package-lock.json
+      - run: npm ci --prefix studio --no-fund --no-audit
+      - run: npm run build --prefix studio
+      - name: Upload to the studio-build release
+        run: |
+          file="studio-$(node studio/dev.mjs --stamp).tar.gz"
+          rm -rf studio/.next/cache
+          tar -czf "$file" -C studio/.next .
+          gh release view studio-build >/dev/null 2>&1 || gh release create studio-build --prerelease \
+            --title "Studio build" --notes "Ready-made Studio builds that studio/dev.mjs downloads. Updated automatically."
+          gh release upload studio-build "$file" --clobber
+          # Keep the newest 20, so recent versions still find theirs.
+          gh release view studio-build --json assets --jq '.assets | sort_by(.createdAt) | reverse | .[20:][] | .name' \
+            | xargs -r -n1 gh release delete-asset studio-build -y

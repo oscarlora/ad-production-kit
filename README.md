@@ -18,7 +18,7 @@ Built on what I ([@oscarlorak](https://x.com/oscarlorak)) learned making ads for
 
 ## What you can do with it
 
-- **Image ads:** static ads with high product fidelity.
+- **Image ads:** static ads with high product fidelity, or animated GIFs.
 - **Scripts:** for creators to film, or for any video.
 - **Podcast video ads:** clips of AI characters that feel taken from a long-form podcast.
 - **Song video ads:** animated characters singing a relatable story while selling your product.
@@ -53,8 +53,8 @@ Everything runs through your agent: say what you want in plain words.
    Google Drive, Notion, or anywhere you set up (e.g. Dropbox). Anything you or a client want
    remembered goes into the brand's memory, so the next ads follow it.
 
-**Working solo:** everything stays on your computer. With cloud storage set up, say *"push Acme"*
-when you finish to back it up.
+**Working solo:** with cloud storage set up (recommended), your media lives in the cloud and Studio
+streams it; say *"push Acme"* when you finish. Without it, everything stays on your computer.
 
 **Working as a team:**
 
@@ -76,14 +76,20 @@ ADPK works inside your AI agent: you talk to the agent, and it uses ADPK to make
    - For others, it's the respective agent chat.
 2. **Send it this message:** *Install https://github.com/oscarlora/ad-production-kit*
 
-   Click **Allow** when it asks to run the install. On a Mac, if a window asks to install Apple's
-   command line tools, click **Install**.
+   It installs ADPK in a folder in your user folder (`ad-production-kit`), or one you pick, such as
+   Documents. ADPK stays in that folder for good: don't move it. Click **Allow** when it asks to run
+   the install. On a Mac, if a window asks to install Apple's command line tools, click **Install**.
 3. **Get your kie.ai key and paste it in the chat when the agent asks.** [kie.ai](https://kie.ai) is
    the one service ADPK needs: through a single account it runs every AI model ADPK uses to make
    images, video, voices, music and sound effects. You pay as you go, with credits.
    1. Sign up at [kie.ai](https://kie.ai).
    2. Add credits on its billing page.
    3. Open [API Keys](https://kie.ai/api-key), create a key and copy it.
+4. **Set up cloud storage (recommended).** A [Cloudflare R2](https://www.cloudflare.com/developer-platform/r2/)
+   bucket keeps your brand's media in the cloud: the studio streams it, your computer keeps only light
+   previews, and a team can share it. The agent walks you through it; you paste the four keys into
+   the `.env` file yourself. You can skip it and keep everything on your computer, but that's slower
+   and fills your disk.
 
 Then say *"Let's make an ad for &lt;your brand's website&gt;"* or whatever you want to do.
 
@@ -95,21 +101,22 @@ Privacy & Security and click **Open Anyway**. To build it yourself: `cd desktop 
 
 *For the AI agent:* install with
 `curl -fsSL https://raw.githubusercontent.com/oscarlora/ad-production-kit/main/tools/setup.sh | bash`
-(on Windows, clone this repo and run `tools\setup.ps1`), then follow
-[`skills/set-up-adpk/SKILL.md`](skills/set-up-adpk/SKILL.md) in the downloaded folder.
+(on Windows,
+`powershell -ExecutionPolicy Bypass -c "irm https://raw.githubusercontent.com/oscarlora/ad-production-kit/main/tools/setup.ps1 | iex"`),
+then follow [`skills/set-up-adpk/SKILL.md`](skills/set-up-adpk/SKILL.md) in the downloaded folder.
 
 **Good to know**
 
 - **Model:** on Claude, Opus 5.5 at medium effort (ADPK sets it for you); on ChatGPT, GPT-6.1 Sol at
   medium. For any other agent, use its top model at its recommended effort.
 - **What the install adds:** ADPK itself, Node (runs ADPK's tools), ffmpeg (video and audio
-  processing), whisper.cpp (word timings for captions), git (on a Mac, through Apple's command line
-  tools), and the catalog of a shared library of music, sound effects and references (each file
-  downloads when an ad uses it). Everything but git goes in your user folder, with no admin
-  password.
-- **Optional, for teams or cloud storage:** a [Cloudflare R2](https://www.cloudflare.com/developer-platform/r2/)
-  bucket keeps your brand files in the cloud and lets a team share them. Without it, everything stays
-  on your computer. Google Drive and Notion uploads are optional too.
+  processing), whisper.cpp and its model (word timings for captions, 574 MB), git, and the catalog of
+  a shared library of music, sound effects and references (each file downloads when an ad uses it).
+  On a Mac it all goes in your user folder, with no admin password (git comes with Apple's command
+  line tools). On Windows, Node, git and ffmpeg install through winget, which may ask to allow
+  changes. On Linux, setup or the tool that needs it says what to install yourself (git, ffmpeg 8, a
+  C++ compiler for captions).
+- **Optional:** Google Drive and Notion uploads.
 - ADPK runs on macOS, Windows and Linux.
 
 ## How it's organized

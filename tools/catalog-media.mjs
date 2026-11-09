@@ -8,7 +8,7 @@ import { basename, join, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { catalogPaths, mergeRecord, parseArgs, inferWorkspace, loadEnv, usage } from './lib/catalog.mjs';
+import { catalogPaths, mergeRecord, parseArgs, inferWorkspace, loadEnv, readRecord, typeOf, usage } from './lib/catalog.mjs';
 import { planAndProbe } from './lib/media-probe.mjs';
 import { analyzeMany } from './analyze-media.mjs';
 import { embedAll } from './embed-media.mjs';
@@ -20,14 +20,14 @@ import { readDriveSources, writeDriveSources } from './lib/drive.mjs';
 const TOOLS = fileURLToPath(new URL('.', import.meta.url));
 const node = (script, args) => spawnSync(process.execPath, [join(TOOLS, script), ...args], { stdio: 'inherit' });
 
-const HELP = `catalog-media.mjs — media to searchable library: pull → probe → analyze → embed → index → push
+const HELP = `catalog-media.mjs — media to searchable library: pull → probe → analyze → embed → index → previews → push
 
   node tools/catalog-media.mjs --brand workspaces/<WS>/<Brand> [--source "<folder|Drive link|URL>"]
        [--generated | --swipe] [--jobs 2] [--no-push] [--dry-run]
     --source     what to add; without it, finishes what is pending and pushes
     --generated  the files were made by ADPK (else: the link each was pulled from, or an upload)
     --swipe      the files are ads or content to replicate (Studio's Swipe page; search-media --swipe)
-    --jobs       videos probed at once (default 2)
+    --jobs       videos probed at once (default 2, 1 on a light computer)
     --no-push    keep the library local (default: push to R2 when the workspace has keys)
     --dry-run    list what a Drive folder pull would download, then stop
 Analysis: Gemini on kie.ai (<WS>_KIE_API_KEY). Search vectors are made locally (no key).`;
@@ -90,7 +90,10 @@ try {
   const n = buildIndex(paths);
   console.log(`catalog: ${n} assets · analysis ${spendText()}${res.failed.length ? ` · ${res.failed.length} failed analysis (re-run to retry)` : ''}`);
 
-  // 5. Push to R2 when the workspace has creds — originals only when some were added or renamed.
+  // 5. Studio's preview copies of the new videos (after analysis renamed them; they sync), then push to R2 when the
+  // workspace has creds — originals only when some were added or renamed.
+  const newVideos = newIds.map((id) => readRecord(paths, id)?.file?.name).filter((f) => f && typeOf(f) === 'video').map((f) => join(media, f));
+  if (newVideos.length) node('edit-video.mjs', ['previews', ...newVideos]);
   if (!a['no-push']) {
     if (r2FromEnv(loadEnv(), inferWorkspace(brand))) node('sync-brand.mjs', ['--push', brand, ...(fresh || res.done.length ? ['--originals'] : [])]);
     else console.log('No R2 creds for this workspace — library kept local only.');

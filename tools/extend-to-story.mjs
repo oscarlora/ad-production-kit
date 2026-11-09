@@ -6,6 +6,7 @@ import { tmpdir } from 'node:os';
 import { join, dirname, basename } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { ffprobeJson, parseArgs, run, usage } from './lib/catalog.mjs';
+import { fetchMissing } from './lib/r2.mjs';
 
 const HELP = `extend-to-story.mjs — an approved 4:5 static → its 9:16 Story version
 
@@ -17,6 +18,7 @@ const HELP = `extend-to-story.mjs — an approved 4:5 static → its 9:16 Story 
 
 const args = parseArgs(process.argv.slice(2), { flags: ['paste', 'dry'], help: HELP });
 if (['in', 'out', 'above', 'below'].some((k) => !args[k] || args[k] === true)) usage(HELP);
+await fetchMissing(args.in);
 
 const tmp = mkdtempSync(join(tmpdir(), 'story-'));
 process.on('exit', () => rmSync(tmp, { recursive: true, force: true }));
