@@ -40,14 +40,15 @@ The **concept** is product + persona + angle + format. Then copy, then design.
 1. **Product** — ask which **product** the ad is for, by name (offer the brand's products if there are several). Call it the "product," not the "subject."
 2. **Persona** — pick or ideate one (**ideate-personas-angles**).
 3. **Angle** — pick or ideate one (**ideate-personas-angles**).
-4. **Format** — image type + layer layout (**ideate-image-format**).
+4. **Format** — image type + layer layout (**ideate-image-format**), and static or animated GIF
+   (**write-image-prompt**).
 5. **Copy** — hook, plus subline and tertiary if the format uses them (**write-copy**).
 6. **Design** — colors, fonts, hierarchy, legibility (**ideate-image-format**, Design).
 7. **Prompt** — compose the structured prompt in the chat, not in a file (**write-image-prompt**).
 8. **Show, then generate** — show the full ad as a **table in the chat**, every parameter **including the prompt**. Then render (**write-image-prompt**).
 9. **Approve** — on the user's yes, move the render to `final/` (**write-prompt**, filename
    convention).
-10. **Story version** — every static is made 4:5 first; once a 4:5 is approved, make its 9:16 Story
+10. **Story version** — every static (not a GIF) is made 4:5 first; once a 4:5 is approved, make its 9:16 Story
     version by AI extension, never a new layout: `node tools/extend-to-story.mjs --in <approved 4:5>
     --out <drafts/…> --above "<what continues above>" --below "<what continues below>"`. Use its
     output as-is (don't paste the original back). On approval it goes to `final/` like the 4:5.

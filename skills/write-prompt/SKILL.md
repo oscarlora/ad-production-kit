@@ -85,7 +85,8 @@ Every ad gets its own folder in `outputs/`. A render lands in `drafts/`; on appr
   authority**: at the start of a batch, peek with `node tools/upload-to-notion.mjs next-id <WS>
   "<Brand>"` and number from there.
   Otherwise take the highest of the brand's `outputs/` leading numbers and its batch plans' slot IDs
-  (**plan-batch**), and add 1.
+  (**plan-batch**), and add 1, after a pull (other sessions' ads land through R2). Never write over an
+  existing folder or `outputs/json/<ID>.json`: it's another ad.
 - **Variation** — `V1`, `V2`, … versions of the same concept. Files only, never folders. A new
   concept is a new ad with its own ID.
 - **Concept** — 2–4 words naming the angle's core message (`Greens-Beat-Pills`), not a line lifted

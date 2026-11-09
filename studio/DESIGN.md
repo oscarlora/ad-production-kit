@@ -79,7 +79,8 @@ and nav buttons. A dashed border means empty or a draft.
   in place (bold, italic, links, lists), framed by a hairline (a cell by a 1.5px `--fg` frame with `--radius-sm`,
   floating a little past its edges); a labeled line edits as its title and its text; only comments edit as raw text. Grips (`--faint`) sit in a margin outside the content and show on hover: left of a block; for a table, the
   hovered column's in a strip above the header, the hovered row's in a left gutter. Table columns wrap between
-  8rem and 20rem (the row label 5–9rem), and a wider table scrolls sideways.
+  8rem and 20rem (the row label 5–9rem) until a header's right edge is dragged (a 2px `--line-strong` line on hover,
+  `col-resize` cursor; a double click resets), and a wider table scrolls sideways.
   A 2px `--fg` line marks where a drag drops; hovering a grip shades its row or column. A clicked grip selects its block, row or column (`--fill`; a drag across rows or Shift+click selects several) and opens a
   floating menu (`--shadow-float`), Delete last under a hairline. A script table ends with its word count and spoken time
   (estimated, or the voice take's own length once there is one), each after a muted icon; the hook in that sentence is

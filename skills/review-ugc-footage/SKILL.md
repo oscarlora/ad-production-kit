@@ -23,7 +23,7 @@ Per clip, all clips at once: its library record (`inputs/media/_catalog/json/<id
 `file.original` is the clip's name) for what is said and shown, a sheet of its start, middle and end
 frames (ffmpeg) with the 4:5 crop and the Reels UI zone drawn (zones in **edit-video**, Text), and its
 levels (`ffmpeg -af volumedetect`). Then read the brief (`outputs/<ad>/<ID>_V1_….md`): every hook, body line, CTA and
-B-roll needs a clip, except scenes marked “(Optional)”. Run every clip through the checklist, the same one Studio shows:
+B-roll needs a clip, except scenes marked “(Optional)” (EDITOR CLIPS are the editor's, and Studio leaves them out). Run every clip through the checklist, the same one Studio shows:
 
 1. **line** — says the scripted line, or the same message in the creator's words. Fails on a changed
    meaning, a missing or added claim, a product fact said wrong ("chicken broth" for "bone broth"), a

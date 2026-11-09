@@ -14,7 +14,7 @@
 //   video → thumbs/<id>.jpg (poster)  keyframes/<id>_NN.jpg (one per scene)  sprites/<id>.jpg
 //   audio → peaks/<id>.json (waveform)
 import { statSync, writeFileSync, existsSync, copyFileSync, readdirSync, readFileSync, mkdirSync, mkdtempSync, rmSync, renameSync, constants } from 'node:fs';
-import { join, basename, extname, relative, sep } from 'node:path';
+import { join, basename, extname, relative, resolve, sep } from 'node:path';
 import { tmpdir } from 'node:os';
 import { catalogPaths, ensureDirs, typeOf, mimeOf, hashFile, readRecords, writeRecord, mergeRecord, isMedia, slugify, have, run, runAsync, ffprobeJson, imageFitCmd, pcm, round, FFMPEG_FIX, machine, hwDecode } from './catalog.mjs';
 import { readDriveSources } from './drive.mjs';
@@ -114,7 +114,7 @@ export async function videoPass(file, meta, { scenes = false, sprite = null, wor
     attempts.push([[], SHORT(base)]);
     let r;
     for (const [hw, pre] of attempts) {
-      r = await runAsync('ffmpeg', ['-y', '-v', 'error', ...hw, '-i', file, '-filter_complex', graph(pre), ...maps, ...audio], { allowFail: true, cwd: tmp });
+      r = await runAsync('ffmpeg', ['-y', '-v', 'error', ...hw, '-i', resolve(file), '-filter_complex', graph(pre), ...maps, ...audio], { allowFail: true, cwd: tmp });
       if (r.status === 0) break;
       console.error(`  ${basename(file)}: ${hw.length ? 'hardware' : 'software'} decode failed (${String(r.stderr).trim().split('\n').pop()})${hw.length ? ' — falling back' : ''}`);
     }

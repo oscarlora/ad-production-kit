@@ -35,6 +35,7 @@ export default function Editor({ ws, brand, ad, edit }) {
   const [error, setError] = useState('');
   const [t, setT] = useState(0);
   const [playing, setPlaying] = useState(false);
+  const [waiting, setWaiting] = useState(false); // a clip's footage is still opening (its preview copy being made)
   const [draft, setDraft] = useState(null); // a comment being written: { t, from (drag start), box, text }
   const [focus, setFocus] = useState(null); // comment id
   const [lit, setLit] = useState(null); // the comment id under the pointer, in the list or on the timeline
@@ -145,7 +146,7 @@ export default function Editor({ ws, brand, ad, edit }) {
     if (L.busy || !eng?.doc) return;
     L.busy = true;
     try {
-      while (L.pending != null) { const x = L.pending; L.pending = null; await eng.render(x, L.stop ? 1 : 0); }
+      while (L.pending != null) { const x = L.pending; L.pending = null; await eng.render(x, L.stop ? 1 : 0); setWaiting(eng.waiting > 0); }
     } catch (e) { setError(String(e.message || e)); } finally { L.busy = false; }
   }, []);
 
@@ -208,13 +209,13 @@ export default function Editor({ ws, brand, ad, edit }) {
   useEffect(() => {
     let dead = false, eng = null;
     import('../../engine/index.js').then(async ({ createEngine }) => {
-      eng = await createEngine({ canvas: canvasRef.current, url, light: true });
+      eng = await createEngine({ canvas: canvasRef.current, url, light: true, onOpen: () => draw(live.current.t) });
       if (dead) { eng.close(); return; }
       engineRef.current = eng;
       setEngine(eng);
     }).catch((e) => setError(String(e.message || e)));
     return () => { dead = true; pause(); eng?.close(); engineRef.current = null; };
-  }, [url, pause]);
+  }, [url, pause, draw]);
   useEffect(() => () => { const a = live.current.actx; live.current.actx = null; a?.close().catch(() => {}); }, []);
 
   // (Re)load the document whenever its file changes on disk.
@@ -350,6 +351,7 @@ export default function Editor({ ws, brand, ad, edit }) {
             </>
           )}
           {!doc && !error && <div className="ed__wait">Loading</div>}
+          {doc && waiting && <div className="ed__wait">Preparing this clip's preview…</div>}
         </div>
       </div>
       <aside className="ed__side">

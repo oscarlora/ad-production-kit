@@ -41,6 +41,7 @@ export class Media {
     this.url = url;
     this.mono = mono; // sound folded to one channel (the preview)
     this.videos = new Map(); // url -> Promise<{ track, half, duration }>
+    this.opened = new Set(); // urls whose video opened or failed (no longer waiting on the server)
     this.cursors = new Map(); // clip id -> Cursor
     this.queue = new Map(); // clip id -> its last pending decode
     this.images = new Map();
@@ -59,11 +60,12 @@ export class Media {
         const { averagePacketRate } = await track.computePacketStats(48);
         return { track, half: 0.5 / averagePacketRate, duration: await input.computeDuration() };
       })();
-      p.catch(() => this.videos.delete(key));
+      p.then(() => this.opened.add(key), () => { this.videos.delete(key); this.opened.add(key); });
       this.videos.set(key, p);
     }
     return this.videos.get(key);
   }
+  isOpen(src) { return this.opened.has(this.url(src)); }
 
   // The frame a clip shows at source time ts (nearest frame). One call per clip at a time (a clip's decoder is
   // sequential), so calls queue per id.

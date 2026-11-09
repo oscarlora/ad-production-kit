@@ -15,8 +15,8 @@ import { fetchMissing, r2FromEnv } from './r2.mjs';
 // fallback = the model to switch to when this one can't do the job (only the user switches).
 // Request shapes and limits per model live in each tool, from the doc linked here.
 export const MODELS = {
-  'gpt-image-2.5':         { kind: 'image', kie: 'gpt-image-2-5-flare', gateway: 'openai/gpt-image-2.5-flare', fallback: 'nano-banana-2.1',
-    doc: 'https://docs.kie.ai/market/gpt/gpt-image-2-5-flare-text-to-image.md' }, // + -image-to-image.md
+  'gpt-image-2.6':         { kind: 'image', kie: 'gpt-image-2-6/flare', gateway: 'openai/gpt-image-2.6-flare', fallback: 'nano-banana-2.1',
+    doc: 'https://docs.kie.ai/market/gpt/gpt-image-2-6-flare-text-to-image.md' }, // + -image-to-image.md
   'nano-banana-2.1':       { kind: 'image', kie: 'nano-banana-2-1', gateway: 'google/gemini-nano-banana-2.1',
     doc: 'https://docs.kie.ai/market/google/nanobanana-2-1.md' },
   'minimax-h3':            { kind: 'video', kie: 'minimax-h3', fallback: 'gemini-omni-1.1-flash',

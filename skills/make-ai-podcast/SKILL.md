@@ -1,12 +1,12 @@
 ---
 name: make-ai-podcast
-description: Make a podcast-style AI video ad — one to four speakers, where Seedance 2.5 generates the footage and voices from per-character GPT Image 2.5 base images edited from a generated podcast-set photo, with a script grounded in the brand's research. Use whenever someone wants a podcast-style or talking-head VIDEO ad, an AI-generated podcast clip, a UGC "two people talking" ad, or a product turned into a vertical podcast-style video — even if they just say "make a podcast ad" or describe the format without naming it.
+description: Make a podcast-style AI video ad — one to four speakers, where Seedance 2.5 generates the footage and voices from per-character GPT Image 2.6 base images edited from a generated podcast-set photo, with a script grounded in the brand's research. Use whenever someone wants a podcast-style or talking-head VIDEO ad, an AI-generated podcast clip, a UGC "two people talking" ad, or a product turned into a vertical podcast-style video — even if they just say "make a podcast ad" or describe the format without naming it.
 ---
 
 # Make AI podcast
 
 A podcast-style video ad: one to four people talking, one on screen at a time, straight cuts.
-**Seedance 2.5** generates the footage and the voices; **GPT Image 2.5** locks each speaker's look in
+**Seedance 2.5** generates the footage and the voices; **GPT Image 2.6** locks each speaker's look in
 a base image first. Any length, any language: longer just means more clips (step 8).
 
 ## 1. Research

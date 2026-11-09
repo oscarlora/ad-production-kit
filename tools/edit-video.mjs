@@ -7,7 +7,7 @@ import { createServer } from 'node:http';
 import { createReadStream, existsSync, mkdirSync, openSync, readFileSync, readdirSync, statSync, writeFileSync, writeSync, closeSync, watch } from 'node:fs';
 import { basename, dirname, join, relative, resolve, sep } from 'node:path';
 import { tmpdir } from 'node:os';
-import { brandDirFrom, cachedFile, catalogPaths, die, ffprobeJson, isCached, loudness, markEditing, mimeOf, parseArgs, PREVIEW_PX, readEditing, readRecords, round, run, runAsync, sessionId, typeOf, usage, videoPreviewCmd, videoPreviewOpts, warmPreviews } from './lib/catalog.mjs';
+import { brandDirFrom, cachedFile, catalogPaths, die, ffprobeJson, isCached, loudness, machine, markEditing, mimeOf, parseArgs, PREVIEW_PX, readEditing, readRecords, round, run, runAsync, sessionId, typeOf, usage, videoPreviewCmd, videoPreviewOpts, warmPreviews } from './lib/catalog.mjs';
 import { compose, eachKeyed, endOf, isBed, keyed, mapTimes, r3, val } from '../studio/engine/doc.js';
 import { atempo, soundRate, stretched, tempoOpts } from './lib/stretch.mjs';
 import { sdrSource, tagBt709 } from './lib/hdr.mjs';
@@ -54,7 +54,9 @@ const HELP = `edit-video.mjs — an ad's edit document (outputs/<ad>/edit.json)
                                                   keeping drift slower than --smooth s (--lock: none); warns when an edge shows
   reframe <edit.json> --size 1080x1350 --out <edit-v2.json>   the edit in another frame size (positions and
                                                   sizes scaled; media still fills the frame)
-  export   <edit.json> [--out <mp4>] [--scale 0.5] [--from s] [--to s] [--timeout 1800] [--allow-black]
+  export   <edit.json…> [--out <mp4>] [--scale 0.5] [--from s] [--to s] [--timeout 1800] [--allow-black]
+                                                  several edits export at once (one by one on a light computer;
+                                                  --out takes one)
                                                   HDR sources (iPhone HLG/Dolby Vision, PQ, BT.2020) are tone-mapped
                                                   to SDR BT.709 first (a cached copy, made once per file; SDR files
                                                   untouched); the MP4 is tagged BT.709
@@ -77,7 +79,8 @@ const HELP = `edit-video.mjs — an ad's edit document (outputs/<ad>/edit.json)
                                                   sheet of their moments (marked spots outlined; one on a stretch has
                                                   to, with what's on screen across it and its first and last frame), and turn "seen"
                                                   (a comment on a .md brief or footage.json has file and quote instead, plus check on a footage comment; one the user's
-                                                  own edit made in Studio also has edit: { where, from, to });
+                                                  own edit made in Studio also has edit: { where, from, to }, and
+                                                  deleted: true when it deleted rows, a column or blocks);
                                                   a comment the user sent back keeps its earlier rounds in history;
                                                   --wait blocks until there is one. They go only to the session
                                                   editing the ad (lib/catalog.mjs markEditing); any command that changes
@@ -684,6 +687,19 @@ const statusFile = (planPath) => join(dirname(planPath), '.export.json');
 const setStatus = (planPath, s) => writeFileSync(statusFile(planPath), JSON.stringify({ plan: basename(planPath), pid: process.pid, at: Date.now(), ...s }));
 
 async function exportCmd(p) {
+  const plans = args._.slice(1);
+  if (plans.length > 1) {
+    // Several edits export at once, one process each: one export uses only part of the machine (not a light one).
+    if (args.out) die('--out takes one edit');
+    const flags = ['scale', 'from', 'to', 'timeout'].flatMap((k) => (args[k] ? [`--${k}`, String(args[k])] : [])).concat(args['allow-black'] ? ['--allow-black'] : []);
+    const one = (plan) => runAsync(process.execPath, [process.argv[1], 'export', plan, ...flags], { allowFail: true });
+    const runs = [];
+    if (machine().light) for (const plan of plans) runs.push(await one(plan));
+    else runs.push(...await Promise.all(plans.map(one)));
+    runs.forEach((r, i) => console.log(`${basename(plans[i])}: ${r.status === 0 ? r.stdout.trim() : `FAILED ${r.stderr.trim().split('\n').pop()}`}`));
+    if (runs.some((r) => r.status !== 0)) process.exit(1);
+    return;
+  }
   const doc = readDoc(p);
   const black = blackGaps(doc);
   if (black.length && !args['allow-black']) die(`black frames at ${black.map(([a, b]) => `${round(a)}s (${round(b - a)}s)`).join(', ')}: fix the edit, or --allow-black`);

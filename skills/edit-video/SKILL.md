@@ -55,8 +55,8 @@ they come:
 Comments are one file each in `outputs/<ad>/comments/`, in the language the user writes in; reply in it.
 A comment on a brief (.md) or `footage.json` has `file` and `quote` (the text it's about) instead of a
 moment; its `--done` takes no `--span` (and on a brief, a `--reply` only when you changed something).
-One from the user's own edit in Studio carries `edit: { where, from, to }`: bring what depends on it
-in step.
+One from the user's own edit in Studio carries `edit: { where, from, to }` (plus `deleted: true`
+when it deleted rows, a column or blocks; `from` is what went): bring what depends on it in step.
 
 ## Pick the style
 
@@ -167,7 +167,7 @@ The Studio preview is the live edit, so review and revisions never need an expor
 asks or approves the cut; an approval also means push to R2 right after the export (and again after each later
 approval). `node tools/edit-video.mjs export outputs/<ad>/edit.json` (or the user's Export button): H.264 + AAC at
 −14 LUFS into `final/<id>_V<n>_…mp4`, about 20 s for 80 s of 1080p; `--out` names it per the brand's
-brief template if it has one. `--scale 0.5` makes a quick draft,
+brief template if it has one. Several versions go in one command (`export edit.json edit-v2.json …`), all at once (one by one on a light computer). `--scale 0.5` makes a quick draft,
 `--from`/`--to` a section. Never grade your own render; hand over the path.
 
 HDR phone footage (iPhone HLG / Dolby Vision, PQ, BT.2020) is tone-mapped to SDR BT.709 automatically

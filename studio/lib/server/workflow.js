@@ -184,7 +184,7 @@ function footageView(brandDirAbs, brief, files) {
       action: sc.action ? aiCheck(c.checks?.action) : null,
       framing: aiCheck(c.checks?.framing),
       audio: aiCheck(c.checks?.audio),
-      file: clip ? (nameKey(baseName(clip.rel).replace(/\.[^.]+$/, '')) === nameKey(sc.scene)
+      file: clip ? (nameKey(baseName(clip.rel).replace(/\.[^.]+$/, '')) === nameKey(sc.scene.replace(/\(.*?\)/g, '')) // "B-roll 1 (Body 6)" ↔ Broll1
         ? { ok: true }
         : { ok: false, note: `Named "${baseName(clip.rel)}". Rename it before the edit.` }) : null,
     };
@@ -245,7 +245,7 @@ const FAMILIES = {
     { key: 'profile', label: 'Profile', optional: true, files: (f) => f.rel === 'references/profile.md' }, // an ad for a known creator: their profile, reels as media blocks
     CONCEPT,
     { key: 'script', label: 'Script', ...SCRIPT_TABLE, cols: /^(scene|lines?|talking points)$/i },
-    { key: 'storyboard', label: 'Storyboard', section: /^(lines to camera|voice ?over|slides|b-?roll|visuals)/i, pick: /^\|/, files: under('slides', 'image') },
+    { key: 'storyboard', label: 'Storyboard', section: /^(lines to camera|voice ?over|slides|b-?roll|editor clips|visuals)/i, pick: /^\|/, files: under('slides', 'image') },
     { key: 'brief', label: 'Brief', files: any(ROOT_MD, (f) => /^analysis\.md$/i.test(f.rel)) },
     { key: 'footage', label: 'Footage' }, // footage.json, filled in adWorkflow
     { key: 'edit', label: 'Edit', files: ROOT_VIDEO },

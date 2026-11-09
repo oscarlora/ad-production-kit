@@ -3,7 +3,7 @@
 // Saved files are stripped of metadata (C2PA, EXIF, XMP) and get a <stem>.gen.json sidecar.
 
 import { readFile, writeFile } from 'node:fs/promises';
-import { existsSync, mkdtempSync, renameSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, rmSync } from 'node:fs';
 import { basename, join, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { cleanImage } from './lib/clean-image.mjs';
@@ -26,49 +26,41 @@ Required (or --record):
                            stamped with what was sent + the output
 
 Optional:
-  --model <name>           gpt-image-2.5 (default; GPT Image 2.5 Flare) | nano-banana-2.1 (its fallback)
+  --model <name>           gpt-image-2.6 (default; GPT Image 2.6 Flare) | nano-banana-2.1 (its fallback)
   --ref <path|url>         Reference image (repeatable, order kept: --ref N = reference image N).
-                           Max 16 on gpt-image-2.5, 10 on nano-banana-2.1 (jpeg/png/webp, 30 MB);
+                           Max 16 on gpt-image-2.6, 10 on nano-banana-2.1 (jpeg/png/webp, 30 MB);
                            extras are dropped with a WARN
   --aspect <ratio>         4:5 (default; 4x5 also works)
-                           gpt-image-2.5: 1:1 3:2 2:3 4:3 3:4 16:9 9:16 21:9 auto, and 27:16 16:27 9:8
-                             8:9 at 1K only. 4:5 / 5:4 render at 3:4 / 4:3 and are center-cropped (nothing else changes)
+                           gpt-image-2.6: 1:1 3:2 2:3 4:3 3:4 5:4 4:5 16:9 9:16 2:1 1:2 21:9 9:21 3:1 1:3 auto
                            nano-banana-2.1: 1:1 2:3 3:2 1:4 4:1 3:4 4:3 4:5 5:4 1:8 8:1 9:16 16:9 21:9 auto
   --resolution <res>       1K (default) | 2K | 4K
-  --background <b>         gpt-image-2.5: auto (default) | opaque | transparent
-  --format <ext>           nano-banana-2.1: png (default) | jpg. gpt-image-2.5 returns png
+  --background <b>         gpt-image-2.6 at 1K: auto (default) | opaque | transparent
+  --format <ext>           png (default) | jpg, and on gpt-image-2.6 also webp | gif
+                           gif: an animated GIF, from the prompt only (no --ref), kie only; 1K comes out 512 px
+  --frames <n>             gif: auto (default) | 4 | 9 | 16 | 25 | 36 | 64
+  --frame-ms <ms>          gif: each frame's duration, 20-2000 (default: the model picks)
 ${runHelp(300)}
 
 ${envHelp('the --out/--record path')}`;
 
 // kie request limits per model, from the docs linked in MODELS.
 const LIMITS = {
-  'gpt-image-2.5': {
-    refs: 16, aspects: ['1:1', '3:2', '2:3', '4:3', '3:4', '16:9', '9:16', '21:9', 'auto', '27:16', '16:27', '9:8', '8:9'],
-    only1K: ['27:16', '16:27', '9:8', '8:9'],
+  'gpt-image-2.6': {
+    refs: 16, formats: ['png', 'jpg', 'webp', 'gif'],
+    aspects: ['1:1', '3:2', '2:3', '4:3', '3:4', '5:4', '4:5', '16:9', '9:16', '2:1', '1:2', '21:9', '9:21', '3:1', '1:3', 'auto'],
   },
-  'nano-banana-2.1': { refs: 10, aspects: ['1:1', '2:3', '3:2', '1:4', '4:1', '3:4', '4:3', '4:5', '5:4', '1:8', '8:1', '9:16', '16:9', '21:9', 'auto'] },
+  'nano-banana-2.1': {
+    refs: 10, formats: ['png', 'jpg'],
+    aspects: ['1:1', '2:3', '3:2', '1:4', '4:1', '3:4', '4:3', '4:5', '5:4', '1:8', '8:1', '9:16', '16:9', '21:9', 'auto'],
+  },
 };
 const TIERS = ['1K', '2K', '4K'];
-// gpt-image-2.5 on kie has no 4:5 / 5:4: render the nearest ratio, then center-crop to it.
-const CROP = { '4:5': '3:4', '5:4': '4:3' };
-const sentAspect = (shape, aspect) => (shape === 'gpt-image-2.5' && CROP[aspect]) || aspect;
+const FRAMES = ['auto', '4', '9', '16', '25', '36', '64'];
 
-// Lossless center crop of a saved image to `aspect` (w:h).
-async function cropTo(path, aspect) {
-  const [a, b] = aspect.split(':').map(Number);
-  const tmp = path.replace(/(\.[^./]+)$/, '.crop$1');
-  const vf = a < b ? `crop=iw:trunc(iw*${b}/${a}/2)*2` : `crop=trunc(ih*${a}/${b}/2)*2:ih`;
-  if ((await runAsync('ffmpeg', ['-y', '-v', 'error', '-i', path, '-vf', vf, tmp], { allowFail: true })).status !== 0) throw userError(`could not crop ${path} to ${aspect}`);
-  renameSync(tmp, path);
-}
-
-// Why kie can't take this aspect/tier, or null.
-function kieBlocker(shape, aspect, tier) {
-  const { aspects, only1K = [] } = LIMITS[shape];
-  if (!aspects.includes(aspect)) return `takes --aspect ${aspects.join(' ')}, not ${aspect}`;
-  if (only1K.includes(aspect) && tier !== '1K') return `renders ${aspect} at 1K only`;
-  return null;
+// Why kie can't take this aspect, or null.
+function kieBlocker(shape, aspect) {
+  const { aspects } = LIMITS[shape];
+  return aspects.includes(aspect) ? null : `takes --aspect ${aspects.join(' ')}, not ${aspect}`;
 }
 
 // Drops are named loudly: the prompt numbers its references.
@@ -81,12 +73,15 @@ function checkRefs(shape, refs) {
   return refs.slice(0, max);
 }
 
-async function viaKie({ entry, prompt, refs, aspect, resolution, background, format, num, timeout }) {
+async function viaKie({ entry, prompt, refs, aspect, resolution, background, format, frames, frameMs, num, timeout }) {
   const refUrls = await kieUploadAll(refs);
-  const input = { prompt, aspect_ratio: sentAspect(entry.shape || entry.name, aspect), resolution };
+  const input = { prompt, aspect_ratio: aspect, resolution };
   let id = entry.kie;
-  if ((entry.shape || entry.name) === 'gpt-image-2.5') {
+  if ((entry.shape || entry.name) === 'gpt-image-2.6') {
     if (background) input.background = background;
+    if (format !== 'png') input.output_format = format;
+    if (frames) input.frame_count = frames;
+    if (frameMs) input.frame_duration_ms = frameMs;
     if (refUrls.length) input.input_urls = refUrls;
     if (!entry.unlisted) id += refUrls.length ? '-image-to-image' : '-text-to-image';
   } else {
@@ -122,7 +117,8 @@ async function inlineRefs(refs) {
 }
 
 // Gemini (Nano Banana) is a language model on the Gateway: generateText with image output.
-async function viaGateway({ entry, prompt, refs, aspect, resolution, num, timeout }) {
+async function viaGateway({ entry, prompt, refs, aspect, resolution, format, num, timeout }) {
+  if (format === 'gif') throw userError('GIFs are made on kie only.');
   const { ai, gw } = await gatewayClient(process.env.AI_GATEWAY_API_KEY, timeout);
   const images = await inlineRefs(refs);
   const blobs = []; // { bytes, mediaType }
@@ -174,36 +170,43 @@ async function main() {
     : g.prompt != null ? String(g.prompt) : '';
   if (!prompt) die('prompt is empty (pass --prompt/--prompt-file or a record with generation.prompt)');
 
-  const entry = pickModel({ model: args.model || g.model, 'unlisted-model': args['unlisted-model'] }, 'image', 'gpt-image-2.5');
+  const entry = pickModel({ model: args.model || g.model, 'unlisted-model': args['unlisted-model'] }, 'image', 'gpt-image-2.6');
   const shape = entry.shape || entry.name;
   const aspect = String(args.aspect || g.aspect || '4:5').replace('x', ':');
   const resolution = String(args.resolution || g.resolution || '1K').toUpperCase();
   if (!TIERS.includes(resolution)) die(`--resolution must be ${TIERS.join(' | ')} (got "${resolution}")`);
   const background = args.background || g.background ? String(args.background || g.background).toLowerCase() : null;
-  if (background && (shape !== 'gpt-image-2.5' || !['auto', 'opaque', 'transparent'].includes(background)))
-    die('--background is auto | opaque | transparent, on gpt-image-2.5 only.');
-  const format = String(args.format || g.format || 'png').toLowerCase();
-  if (!['png', 'jpg'].includes(format) || (format !== 'png' && shape !== 'nano-banana-2.1')) die('--format is png | jpg, on nano-banana-2.1 only.');
+  if (background && (shape !== 'gpt-image-2.6' || resolution !== '1K' || !['auto', 'opaque', 'transparent'].includes(background)))
+    die('--background is auto | opaque | transparent, on gpt-image-2.6 at 1K only.');
+  const format = String(args.format || g.format || 'png').toLowerCase().replace('jpeg', 'jpg');
+  const { formats } = LIMITS[shape];
+  if (!formats.includes(format)) die(`--format on ${shape} is ${formats.join(' | ')} (got "${format}").`);
+  const frames = args.frames || g.frames ? String(args.frames || g.frames) : null;
+  const frameMs = args['frame-ms'] || g.frameMs ? Number(args['frame-ms'] || g.frameMs) : null;
+  if ((frames || frameMs) && format !== 'gif') die('--frames and --frame-ms need --format gif.');
+  if (frames && !FRAMES.includes(frames)) die(`--frames is ${FRAMES.join(' | ')} (got "${frames}").`);
+  if (frameMs != null && !(Number.isInteger(frameMs) && frameMs >= 20 && frameMs <= 2000)) die('--frame-ms is a whole number from 20 to 2000.');
   const { num, timeout } = runOpts(args, 300);
   const refsIn = args.ref.length ? args.ref : (Array.isArray(g.refs) ? g.refs : []);
   const refs = checkRefs(shape, refsIn);
+  if (format === 'gif' && refs.length) die('--format gif works from the prompt only: kie\'s image-to-image has no GIF output. Describe the product in the prompt, or make a video ad instead.');
 
-  const opts = { entry, prompt, refs, aspect, resolution, background, format, num, timeout };
+  const opts = { entry, prompt, refs, aspect, resolution, background, format, frames, frameMs, num, timeout };
   const ran = await runProviders({
     entry, provider: args.provider, ws: W, kie: () => viaKie(opts), gateway: () => viaGateway(opts),
-    blocker: entry.unlisted ? null : kieBlocker(shape, sentAspect(shape, aspect), resolution),
+    blocker: entry.unlisted ? null : kieBlocker(shape, aspect),
   });
-  const saved = await saveResults(ran.results, out, { fallbackExt: 'png', transform: cleanImage });
-  if (ran.provider === 'kie' && sentAspect(shape, aspect) !== aspect) for (const f of saved) await cropTo(f, aspect);
+  const saved = await saveResults(ran.results, out, { fallbackExt: format, transform: cleanImage });
   await writeSidecars(saved, {
     tool: 'generate-image', model: entry.name, provider: ran.provider, prompt,
-    params: { aspect, resolution, background, format: format === 'png' ? null : format },
+    params: { aspect, resolution, background, format: format === 'png' ? null : format, frames, frameMs },
     refs: refs.map((path) => ({ role: 'ref', path })),
   });
 
   if (record) {
     record.generation = {
       ...g, provider: ran.provider, model: entry.name, aspect, resolution, ...(background ? { background } : {}),
+      ...(format !== 'png' ? { format } : {}), ...(frames ? { frames } : {}), ...(frameMs ? { frameMs } : {}),
       prompt, refs: refsIn, output: saved[0], outputs: saved, generatedAt: new Date().toISOString(),
     };
     record.status = 'pending-review';

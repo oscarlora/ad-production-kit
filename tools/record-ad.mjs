@@ -10,7 +10,7 @@
 //     "swipe":     "00198",                                           // the swipe item (catalog id) it replicates
 //     "meta":      { "headline": "", "primary_text": "" },            // Meta in-platform copy (write-meta-copy)
 //     "generation": {
-//       "model": "gpt-image-2.5", "resolution": "2K", "aspect": "4:5",
+//       "model": "gpt-image-2.6", "resolution": "2K", "aspect": "4:5",
 //       "prompt": "the exact prompt", "refs": ["inputs/media/.../x.png"],
 //       "output": "workspaces/<WS>/Acme/outputs/41_..._.png",      // the generator's --out as stamped:
 //       "outputs": ["workspaces/<WS>/Acme/outputs/41_..._.png"],   //   repo-relative, or absolute

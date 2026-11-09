@@ -10,14 +10,16 @@ import { motionKit } from './motion.js';
 
 // canvas: where frames are drawn (its width sets the scale). url(src): fetchable URL of a doc path.
 // load(doc, fxUrl): fxUrl is the URL of the doc's fx module (custom layers, transitions, animations), if any.
-// light (Studio's preview): sound decoded mono at 24 kHz, a quarter of the memory; exports keep 48 kHz stereo.
-export async function createEngine({ canvas, url, light = false }) {
+// light (Studio's preview): sound decoded mono at 24 kHz, a quarter of the memory; exports keep 48 kHz stereo; and a
+// video still opening (the server makes its preview copy first, minutes for a long source) is left out of the frame
+// instead of holding every frame back: `waiting` counts those clips, and onOpen() fires as each one opens.
+export async function createEngine({ canvas, url, light = false, onOpen }) {
   const ctx = canvas.getContext('2d');
   const media = new Media(url, { mono: light });
   const decodeAt = () => new OfflineAudioContext(2, 1, light ? 24000 : 48000);
   let grader = null;
   let doc = null, env = null, sounds = null, gain = 1, audioKey = '';
-  let chain = Promise.resolve();
+  let chain = Promise.resolve(), waiting = 0;
 
   async function load(raw, fxUrl) {
     const d = normalize(raw);
@@ -53,10 +55,13 @@ export async function createEngine({ canvas, url, light = false }) {
   function render(t, ahead = 0) {
     const run = chain.then(async () => {
       const frames = new Map();
+      let wait = 0;
       for (const { c, ts, soon } of needs(doc, t, ahead)) {
+        if (light && c.type === 'video' && !media.isOpen(c.src)) { wait += !soon; media.video(c.src).then(() => onOpen?.(), () => {}); continue; }
         if (soon) { (c.type === 'image' ? media.image(c.src) : media.frame(c.id, c.src, ts)).catch(() => {}); continue; }
         frames.set(c.id, c.type === 'image' ? await media.image(c.src) : await media.frame(c.id, c.src, ts));
       }
+      waiting = wait;
       drawFrame(ctx, doc, t, frames, env);
       await media.sweep();
     });
@@ -80,6 +85,7 @@ export async function createEngine({ canvas, url, light = false }) {
   return {
     load, render, play, resize,
     get doc() { return doc; },
+    get waiting() { return waiting; },
     errors: media.errors,
     async mix() { await audio(); return limit(await mixdown(doc, sounds, gain)); },
     close: () => { env?.motion.dispose(); return media.close(); },

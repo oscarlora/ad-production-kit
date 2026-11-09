@@ -6,8 +6,8 @@
 // relative to the ad folder). Drag the grips to reorder blocks, table rows and columns. Each change saves to disk
 // at once; changes on disk show live, and a block being typed in keeps the typing. Clicking a grip selects its
 // block, row or column and opens its actions (Delete / Backspace deletes it); several blocks, or table rows, select together (see chosen and rowSel below). Selecting text (or a row's Comment
-// action) leaves a comment on it for the agent, as on the video in the Edit step; so does each edit the user finishes,
-// so the agent brings what depends on it in step.
+// action) leaves a comment on it for the agent, as on the video in the Edit step; so does each edit the user finishes
+// and each deletion, so the agent brings what depends on it in step.
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { apiBase, editApi, fileUrl, mediaType, postJson } from '../../lib/client/api.js';
 import { clock } from '../../lib/client/format.js';
@@ -165,6 +165,8 @@ function removeRow(lines, r) {
   }
   return `${name} ${k}`;
 }
+// A table row's name: its label, else its line number.
+const rowName = (line, r) => tableCells(line)[0].replace(/\*/g, '').trim() || `row ${r}`;
 // The focused block's or cell's text and where it is: "Hook 2 · Line" for a cell, the block's first words otherwise.
 function spot(blocks, f) {
   const b = blocks?.find((x) => x.id === f?.id);
@@ -262,14 +264,35 @@ function useGrips(menuFor, onPick) {
 // A table: grips live outside the grid, shown for the hovered row and column: each column's in the strip above
 // its header, each row's in the left gutter. Hovering a grip lights its row or column. Selected rows (rowSel) show
 // as rows: a drag from one row into another selects the rows between, and Shift+click extends the selection (or
-// from the cell being edited) to a row.
-function Table({ b, colRe, focus, setFocus, open, change, done, comment, voice, url, grip, zone, isSel, rowSel, rowsAt, pickRows }) {
+// from the cell being edited) to a row. Dragging a header's right edge sets its column's width (a double click
+// clears it), kept in this browser by file, table and column header.
+function Table({ b, widthsKey, colRe, focus, setFocus, open, change, done, comment, removed, voice, url, grip, zone, isSel, rowSel, rowsAt, pickRows }) {
   const [hover, setHover] = useState({ r: -1, c: -1, grip: false });
   const lines = b.src.split('\n');
   const rows = lines.map(tableCells);
   const n = Math.max(...rows.map((r) => r.length));
   const cols = [...Array(n).keys()].filter((c) => !colRe || colRe.test((rows[0][c] || '').replace(/\*/g, '').trim()));
   const colKind = `col${b.id}`, rowKind = `row${b.id}`;
+  const [widths, setWidths] = useState({});
+  const wKey = `ad-production-kit-studio:cols:${widthsKey}:${lines[0]}`;
+  useEffect(() => { try { setWidths(JSON.parse(localStorage.getItem(wKey)) || {}); } catch { setWidths({}); } }, [wKey]);
+  const keep = (w) => { setWidths(w); try { localStorage.setItem(wKey, JSON.stringify(w)); } catch {} };
+  const resize = (e, name) => {
+    e.preventDefault();
+    const x0 = e.clientX, w0 = e.currentTarget.parentElement.getBoundingClientRect().width;
+    let w = widths;
+    const onMove = (m) => { w = { ...widths, [name]: Math.max(48, Math.round(w0 + m.clientX - x0)) }; setWidths(w); };
+    const swallow = (k) => k.stopPropagation(); // the click that ends the drag doesn't open the cell
+    const onUp = () => {
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onUp);
+      keep(w);
+      window.addEventListener('click', swallow, true);
+      setTimeout(() => window.removeEventListener('click', swallow, true));
+    };
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+  };
   const onOver = (e) => {
     const el = e.target.closest('[data-r], [data-c]');
     const r = el?.dataset.r != null ? +el.dataset.r : -1, c = el?.dataset.c != null ? +el.dataset.c : -1, grip = !!e.target.closest('.mde__grip');
@@ -278,11 +301,13 @@ function Table({ b, colRe, focus, setFocus, open, change, done, comment, voice, 
   const cell = (r, c, Tag) => {
     const editing = focus?.id === b.id && focus.r === r && focus.c === c;
     const lit = hover.grip && (hover.c < 0 ? hover.r === r : hover.r < 0 && hover.c === c);
+    const name = rows[0][c], w = widths[name];
     return (
-      <Tag key={c} data-r={r} data-c={c} data-sel={isSel(colKind, c) || undefined} data-lit={lit || undefined} className={editing ? 'mde__cell is-editing' : 'mde__cell'} onClick={(e) => !editing && !selecting() && !(e.shiftKey && rowSel?.id === b.id) && open({ id: b.id, r, c, at: [e.clientX, e.clientY] }, e.currentTarget.closest('tr'))}>
+      <Tag key={c} style={w ? { width: w, minWidth: w, maxWidth: w } : undefined} data-r={r} data-c={c} data-sel={isSel(colKind, c) || undefined} data-lit={lit || undefined} className={editing ? 'mde__cell is-editing' : 'mde__cell'} onClick={(e) => !editing && !selecting() && !(e.shiftKey && rowSel?.id === b.id) && open({ id: b.id, r, c, at: [e.clientX, e.clientY] }, e.currentTarget.closest('tr'))}>
         {editing
           ? <RichText value={cellText(rows[r][c])} at={focus.at} start={focus.start} onChange={(v) => change(b.id, (src) => setCell(src, r, c, v))} onBlur={done} onEnter={r > 0 ? (before, after) => splitRow(r, c, before, after) : undefined} onEmptyDelete={r > 0 && c > 0 ? () => dropRow(r, c) : undefined} onMergeBack={r > 0 && c > 0 ? (text) => mergeRow(r, c, text) : undefined} offset={focus.offset} />
           : cellImage(rows[r][c]) ? <img className="mde__cell-img" src={url(cellImage(rows[r][c]))} alt="" loading="lazy" /> : <Inline text={rows[r][c]} />}
+        {r === 0 && <span className="mde__resize" onMouseDown={(e) => resize(e, name)} onDoubleClick={() => { const { [name]: _, ...rest } = widths; keep(rest); }} />}
       </Tag>
     );
   };
@@ -359,12 +384,15 @@ function Table({ b, colRe, focus, setFocus, open, change, done, comment, voice, 
   };
   // Delete or Backspace in an empty cell of a row with nothing else in it (but its label) deletes the row; a numbered
   // row's later ones move down one, with a comment to fix what cites them. The cursor goes to the row above.
+  const RENUMBERED = ', and the later ones moved down one. Update what cites their numbers.';
   const dropRow = (r, c) => {
-    if (tableCells(b.src.split('\n')[r]).slice(1).some((x) => x.trim())) return;
+    const row = b.src.split('\n')[r];
+    if (tableCells(row).slice(1).some((x) => x.trim())) return;
     document.activeElement?.blur();
     let gone = '';
     change(b.id, (src) => { const l = src.split('\n'); gone = removeRow(l, r); return l.join('\n'); }, true);
-    if (gone) comment(`You deleted ${gone}, and the later ones moved down one. Update what cites their numbers.`, gone);
+    const where = rowName(row, r);
+    removed(`You deleted ${where}${gone ? RENUMBERED : ''}`, where, row);
     if (r - 1 > 0 && !isRule(rows[r - 1])) setFocus({ id: b.id, r: r - 1, c });
   };
   // Backspace at the start of a cell, in a row with nothing else in it (but its label), moves its text onto the end of
@@ -376,7 +404,8 @@ function Table({ b, colRe, focus, setFocus, open, change, done, comment, voice, 
     document.activeElement?.blur();
     let gone = '';
     change(b.id, (src) => { const x = src.split('\n'); x[r - 1] = setCell(x[r - 1], 0, c, head ? `${head} ${text}` : text); gone = removeRow(x, r); return x.join('\n'); }, true);
-    if (gone) comment(`You merged ${gone} into the row above, and the later ones moved down one. Update what cites their numbers.`, gone);
+    const where = rowName(l[r], r);
+    removed(`You merged ${where} into the row above${gone ? RENUMBERED : ''}`, where, l[r]);
     setFocus({ id: b.id, r: r - 1, c, offset });
   };
   const show = (on) => on || undefined;
@@ -573,6 +602,13 @@ export default function MdEditor({ ws, brand, ad, file, view, script, comments =
   };
   const editRows = (id, fn) => { change(id, (src) => { const l = src.split('\n'); fn(l); return l.join('\n'); }, true); setRowSel(null); };
   const rowsText = (id, lo, hi) => docRef.current.blocks.find((b) => b.id === id).src.split('\n').slice(lo, hi + 1).join('\n');
+  // Every deletion leaves the agent a comment, the removed markdown as its edit's from.
+  const removed = (text, where, from) => commentApi({ comment: { file: file.name, quote: from.replace(/\*\*/g, ''), text, edit: { where, from, to: '' }, deleted: true } });
+  const deleteRows = (id, lo, hi) => {
+    const text = rowsText(id, lo, hi), where = text.split('\n').map((l, i) => rowName(l, lo + i)).join(', ');
+    editRows(id, (l) => l.splice(lo, hi - lo + 1));
+    removed(`You deleted ${where}`, where, text);
+  };
   // A grip's actions; payload kinds: 'block' (from: block id), `row<id>` (from: line), `col<id>` (from: column).
   const menuFor = ({ kind, from }) => {
     const d = docRef.current;
@@ -594,14 +630,18 @@ export default function MdEditor({ ws, brand, ad, file, view, script, comments =
         ['Insert row above', () => lines((l) => l.splice(lo, 0, blankRow(l)))],
         ['Insert row below', () => lines((l) => l.splice(hi + 1, 0, blankRow(l)))],
         [`Duplicate ${rows}`, () => lines((l) => l.splice(hi + 1, 0, ...l.slice(lo, hi + 1)))],
-        [`Delete ${rows}`, () => lines((l) => l.splice(lo, n))],
+        [`Delete ${rows}`, () => deleteRows(id, lo, hi)],
       ];
     }
     const cols = (fn) => change(id, (src) => mapCols(src, fn), true);
     return [
       ['Insert column left', () => cols((c, empty) => [...c.slice(0, from), empty, ...c.slice(from)])],
       ['Insert column right', () => cols((c, empty) => [...c.slice(0, from + 1), empty, ...c.slice(from + 1)])],
-      ['Delete column', () => cols((c) => c.filter((_, i) => i !== from))],
+      ['Delete column', () => {
+        const cells = d.blocks.find((b) => b.id === id).src.split('\n').map((l) => tableCells(l)[from] || ''), where = `the ${cells[0].replace(/\*/g, '').trim() || 'unnamed'} column`;
+        cols((c) => c.filter((_, i) => i !== from));
+        removed(`You deleted ${where}`, where, cells.join('\n'));
+      }],
     ];
   };
   // Selected blocks: a grip click, Shift+click to extend, a drag from the margin or a text selection across blocks.
@@ -616,7 +656,12 @@ export default function MdEditor({ ws, brand, ad, file, view, script, comments =
     anchorRef.current = a;
     setChosen(ids.slice(Math.min(i, j), Math.max(i, j) + 1));
   };
-  const removeChosen = (ids) => { put({ ...docRef.current, blocks: docRef.current.blocks.filter((b) => !ids.includes(b.id)) }, true); setChosen([]); };
+  const removeChosen = (ids) => {
+    const gone = docRef.current.blocks.filter((b) => ids.includes(b.id)), where = gone.map((b) => spot(gone, { id: b.id }).where).join(', ');
+    put({ ...docRef.current, blocks: docRef.current.blocks.filter((b) => !ids.includes(b.id)) }, true);
+    setChosen([]);
+    removed(`You deleted ${where}`, where, gone.map((b) => b.src).join('\n\n'));
+  };
   const chosenText = () => docRef.current.blocks.filter((b) => chosenRef.current.includes(b.id)).map((b) => b.src).join('\n\n');
   // Enter in a text block (not a list) splits it at the cursor: the rest becomes a new block below, which takes the
   // cursor. Delete or Backspace in an empty block removes it and goes to the block above.
@@ -679,7 +724,7 @@ export default function MdEditor({ ws, brand, ad, file, view, script, comments =
       if (mod && e.key.toLowerCase() === 'a' && activeEditor === rootRef.current && ids.length) { e.preventDefault(); anchorRef.current = ids[0]; setChosen(ids); return; }
       const rs = rowSelRef.current;
       if (rs) {
-        const [lo, hi] = rowsAt(rs.id, rs.a), cut = () => editRows(rs.id, (l) => l.splice(lo, hi - lo + 1));
+        const [lo, hi] = rowsAt(rs.id, rs.a), cut = () => deleteRows(rs.id, lo, hi);
         if (e.key === 'Escape') setRowSel(null);
         else if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); cut(); }
         else if (mod && /^[cx]$/i.test(e.key)) {
@@ -853,7 +898,7 @@ export default function MdEditor({ ws, brand, ad, file, view, script, comments =
             <div key={b.id} data-id={b.id} className="mde__block" {...zone('block', b.id, 'y', moveBlock)} data-sel={isSel('block', b.id) || chosen.includes(b.id) || undefined}>
               {kind !== 'table' && grip({ kind: 'block', from: b.id })}
               {kind === 'media' ? <Media items={mediaItems(b.src)} url={url} />
-                : kind === 'table' ? <Table b={b} colRe={colRe} focus={focus} setFocus={setFocus} open={open} change={change} done={done} comment={(text, quote) => commentApi({ comment: { file: file.name, quote, text } })} voice={script ? (lines, hook, check) => postJson(`${apiBase(ws, brand)}/voice`, { ad, lines, hook, check }).then((r) => r.p && fileUrl(ws, brand, r.p, r.v)) : null} url={url} grip={grip} zone={zone} isSel={isSel} rowSel={rowSel} rowsAt={rowsAt} pickRows={pickRows} />
+                : kind === 'table' ? <Table b={b} widthsKey={`${ws}/${brand}/${ad}/${file.name}`} colRe={colRe} focus={focus} setFocus={setFocus} open={open} change={change} done={done} comment={(text, quote) => commentApi({ comment: { file: file.name, quote, text } })} removed={removed} voice={script ? (lines, hook, check) => postJson(`${apiBase(ws, brand)}/voice`, { ad, lines, hook, check }).then((r) => r.p && fileUrl(ws, brand, r.p, r.v)) : null} url={url} grip={grip} zone={zone} isSel={isSel} rowSel={rowSel} rowsAt={rowsAt} pickRows={pickRows} />
                 : focus?.id === b.id ? (
                   kind === 'comment' ? <Area value={b.src} same={(x, y) => x.trim() === y.trim()} onChange={(v) => change(b.id, () => v)} onDone={done} />
                     : pick && LABELED.test(b.src) ? <TitledEdit b={b} focus={focus} change={change} done={done} split={(before, after) => splitBlock(b.id, before, after)} join={(text) => joinTitled(b.id, text)} untitle={(text) => reTitle(b.id, text, { start: true })} />

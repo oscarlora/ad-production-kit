@@ -57,14 +57,15 @@ export function editInfo(dir) {
 
 // comment: { id?, t, to? (a stretch), box?, text, plan } on the video, or { id?, file, quote, text, edit? } on a .md or footage.json (file
 // relative to the ad folder; on footage.json, quote is the scene and check the checklist point it replies on); edit: { where, from, to } is the user's own change to it, so the agent brings what depends on it in step.
-// Another edit of the same spot joins its open comment (keeping the first from); one that undoes it removes the comment.
+// deleted: the change deleted rows, a column or blocks (to is ''). Another edit of the same spot joins its open comment (keeping the first from); one that undoes it removes the comment. Deletions never join.
 // Returns the saved comment (null when removed).
 export function saveComment(dir, comment) {
   const t = Number(comment?.t), text = String(comment?.text || '').trim(), file = comment?.file && String(comment.file);
   if (file ? !/^([^/\\\0]+\.md|footage\.json)$/i.test(file) || !existsSync(join(dir, file)) : !Number.isFinite(t) || t < 0) throw new Error('a comment needs a time, a .md file or footage.json');
   if (!text) throw new Error('a comment needs text');
   const edit = file && comment.edit ? { where: String(comment.edit.where || '').slice(0, 200), from: String(comment.edit.from ?? ''), to: String(comment.edit.to ?? '') } : null;
-  const same = edit && readComments(dir).find((n) => n.status === 'open' && n.file === file && n.edit?.where === edit.where);
+  const deleted = !!(edit && comment.deleted);
+  const same = edit && !deleted && readComments(dir).find((n) => n.status === 'open' && n.file === file && !n.deleted && n.edit?.where === edit.where);
   if (same) edit.from = same.edit.from;
   let id = same?.id || comment.id;
   if (!COMMENT_ID.test(id || '')) id = `n${Date.now().toString(36)}${Math.random().toString(36).slice(2, 5)}`;
@@ -75,7 +76,7 @@ export function saveComment(dir, comment) {
   const at = prev.at || new Date().toISOString();
   const box = Array.isArray(comment.box) && comment.box.length === 4 && comment.box.every((x) => Number.isFinite(x) && x >= 0 && x <= 1) ? comment.box.map((x) => +x.toFixed(4)) : null;
   const out = file
-    ? { ...prev, id, file, quote: String(comment.quote || prev.quote || '').slice(0, 1000), text, ...(edit && { edit }), ...(comment.check && { check: String(comment.check).slice(0, 20) }), status: 'open', at }
+    ? { ...prev, id, file, quote: String(comment.quote || prev.quote || '').slice(0, 1000), text, ...(edit && { edit }), ...(deleted && { deleted }), ...(comment.check && { check: String(comment.check).slice(0, 20) }), status: 'open', at }
     : { ...prev, id, t: +t.toFixed(3), box, text, plan: String(comment.plan || prev.plan || 'edit.json'), status: 'open', at };
   const to = Number(comment.to);
   if (!file) { if (Number.isFinite(to) && to > t + 0.01) out.to = +to.toFixed(3); else delete out.to; }

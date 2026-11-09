@@ -53,7 +53,7 @@ beside you: show a page with the `open_page` tool instead of launching anything.
 
   Animation's Concept shows `storyboard.md`'s CONCEPT section; Script the shot table's #, Line and What we see columns, editable, with word count and a voice button (the shots show as cards from Frames on); Voice each take with a pick button (`voice.json`); Sheets each sheet as a card with its prompt. UGC steps show the brief's sections: Concept its Message, For, Format and Reference lines and the media under them,
   Script the LINES TO CAMERA (or VOICE OVER) Scene and Line (or Talking points) columns (with word count, spoken time and a voice
-  button), Storyboard every column and the SLIDES / B-ROLL tables, Footage each scene's clip and
+  button), Storyboard every column and the SLIDES / B-ROLL / EDITOR CLIPS tables, Footage each scene's clip and
   checklist under a delivery and approval summary (**review-ugc-footage**). Every .md shown is a
   page of blocks, editable in place. One block carries one thing: a title is its own bold block
   (`**Message**`) over its text, and an image, audio or video is its own `![](path)` line (relative

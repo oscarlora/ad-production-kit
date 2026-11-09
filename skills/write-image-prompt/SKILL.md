@@ -16,13 +16,16 @@ Turn the locked concept into one structured, easy-to-read prompt under **200 wor
   (front, left, right, back) over the full body from the same four sides. A transformation gets a
   before and an after sheet of the same person, each showing only the change (the before: extra
   weight with a neutral face, no eye bags or messy hair; the after: healthy, not thin).
-- **Defaults for image ads:** 1 generation, GPT Image 2.5 Flare (its fast variant), 4:5, 1K tier. Never change aspect, resize or upscale on your own.
+- **Defaults for image ads:** 1 generation, GPT Image 2.6 Flare (its fast variant), 4:5, 1K tier (every aspect it takes: `--help`). Never change aspect, resize or upscale on your own.
+- **Animated GIF ads:** `--format gif` (`--frames`, `--frame-ms`). It takes no reference images, so
+  describe the product exactly (shape, colors, label text) and expect lower fidelity than a static.
+  Say in the Task what moves, frame by frame, and keep the copy still across frames.
 
 ## Prompt structure (image ads)
 
 Write these sections in order:
 
-1. **Task** — "Create [1/2/3] [1K/2K/4K], [aspect ratio] static image ad(s)"
+1. **Task** — "Create [1/2/3] [1K/2K/4K], [aspect ratio] static image ad(s)" (or "animated GIF ad(s)")
 2. **Composition** — layers and their positions (**ideate-image-format**'s bands or anchor points, never percentages), background, layout
 3. **Text** — the copy, with case; end with a short note that typography references follow
 4. **Design** — per text type: font, color, alignment, and any legibility treatment (weight, background, shadow, stroke, gradient)

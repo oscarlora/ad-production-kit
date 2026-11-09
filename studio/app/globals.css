@@ -609,6 +609,10 @@ kbd { font: inherit; font-size: var(--text-xs); color: var(--muted); background:
 .mde__handles .mde__grip { width: 22px; height: 16px; }
 .mde__handles .mde__grip svg { transform: rotate(90deg); }
 .mde__cell { cursor: text; }
+.mde thead .mde__cell { position: relative; }
+.mde__resize { position: absolute; top: 0; bottom: 0; right: -5px; width: 10px; z-index: 2; cursor: col-resize; }
+.mde__resize::after { content: ""; position: absolute; top: 4px; bottom: 4px; left: 4px; width: 2px; border-radius: 1px; background: var(--line-strong); opacity: 0; transition: opacity var(--dur) var(--ease-out); }
+.mde__resize:hover::after, .mde__resize:active::after { opacity: 1; }
 .mde tbody .mde__gutter + .mde__cell { min-width: 5rem; max-width: 9rem; } /* the row's label (Hook 1, Body 10) */
 .mde__cell:hover, .mde .mde__cell[data-lit]:not(.is-editing) { background: var(--fill-soft); }
 .mde tr[data-sel] > .mde__cell, .mde .mde__cell[data-sel] { background: var(--fill); }
