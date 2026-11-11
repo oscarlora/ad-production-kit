@@ -13,3 +13,6 @@ desktop/dist/
 
 # Local tool venvs and models set up on first use (e.g. Resemble Enhance: tools/.venv-enhance).
 tools/.venv-*/
+
+# Cloudflare Worker local state (share/: wrangler dev).
+.wrangler/

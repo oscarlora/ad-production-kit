@@ -26,7 +26,8 @@ end card's.
 
 Lock seven fields in `storyboard.md`'s CONCEPT section, before anything else:
 
-- **Product**, **Persona** (with the awareness stage this ad targets), **Angle**.
+- **Product**, **Persona** (with the awareness stage this ad targets), **Angle**, each reason after it
+  (block format: **open-studio**).
 - **Format:** the path, narrated, dialogue or both.
 - **Style**, unless the user named one, from those on the list below that suit the persona and tone,
   or matched to a style reference.

@@ -41,7 +41,9 @@ export const mediaItems = (src) => {
   const lines = src.split('\n').map((l) => MEDIA.exec(l.trim()));
   return lines.every(Boolean) ? lines.map(([, title, path]) => ({ title, path })) : null;
 };
-export const blockKind = (src) => (isTable(src) ? 'table' : isComment(src) ? 'comment' : mediaItems(src) ? 'media' : 'text');
+// 'code': front matter (a DESIGN.md's tokens), a fenced block or a rule, edited as raw text.
+const isCode = (src) => /^(?:---|```)/.test(src.trimStart()) || /^\*{3,}\s*$/.test(src.trim());
+export const blockKind = (src) => (isTable(src) ? 'table' : isComment(src) ? 'comment' : mediaItems(src) ? 'media' : isCode(src) ? 'code' : 'text');
 
 // A section starts at a heading or a whole-line bold caps label ("**LINES TO CAMERA**") and runs to the next one.
 const SECTION = /^(?:#{1,6}\s+(.+?)|\*\*([^a-z*]+?):?\*\*:?)\s*$/;

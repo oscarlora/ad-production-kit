@@ -30,7 +30,7 @@ const HELP = `catalog-media.mjs — media to searchable library: pull → probe 
     --jobs       videos probed at once (default 2, 1 on a light computer)
     --no-push    keep the library local (default: push to R2 when the workspace has keys)
     --dry-run    list what a Drive folder pull would download, then stop
-Analysis: Gemini on kie.ai (<WS>_KIE_API_KEY). Search vectors are made locally (no key).`;
+Analysis: Gemini on kie.ai (<WS>_KIE_API_KEY; or sunra.ai, <WS>_SUNRA_API_KEY). Search vectors are made locally (no key).`;
 
 const a = parseArgs(process.argv.slice(2), { flags: ['no-push', 'dry-run', 'generated', 'swipe'], help: HELP });
 if (!a.brand) usage(HELP);

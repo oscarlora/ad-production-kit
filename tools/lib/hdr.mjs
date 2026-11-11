@@ -77,12 +77,13 @@ export async function sdrSource(file) {
 }
 
 // Retag an H.264 MP4 the engine wrote (WebCodecs tags the sRGB canvas as transfer iec61966-2-1) as plain BT.709,
-// in place, streams copied. False when ffmpeg failed (the file is left as it was).
+// in place, streams copied, its index up front so it plays while it downloads. False when ffmpeg failed (the file is
+// left as it was).
 export function tagBt709(file) {
   const tmp = file.replace(/(\.\w+)?$/, '.tagging$1');
   const r = run('ffmpeg', ['-v', 'error', '-y', '-i', file, '-map', '0', '-c', 'copy',
     '-bsf:v', 'h264_metadata=colour_primaries=1:transfer_characteristics=1:matrix_coefficients=1',
-    '-color_primaries', 'bt709', '-color_trc', 'bt709', '-colorspace', 'bt709', tmp], { allowFail: true });
+    '-color_primaries', 'bt709', '-color_trc', 'bt709', '-colorspace', 'bt709', '-movflags', '+faststart', tmp], { allowFail: true });
   if (r.status !== 0) { rmSync(tmp, { force: true }); return false; }
   renameSync(tmp, file);
   return true;

@@ -46,11 +46,15 @@ The **concept** is product + persona + angle + format. Then copy, then design.
 6. **Design** — colors, fonts, hierarchy, legibility (**ideate-image-format**, Design).
 7. **Prompt** — compose the structured prompt in the chat, not in a file (**write-image-prompt**).
 8. **Show, then generate** — show the full ad as a **table in the chat**, every parameter **including the prompt**. Then render (**write-image-prompt**).
-9. **Approve** — on the user's yes, move the render to `final/` (**write-prompt**, filename
-   convention).
+9. **Approve** — on the user's yes, or their Approve in Studio, the render moves to `final/` as the next final
+   version (**write-prompt**, filename convention).
 10. **Story version** — every static (not a GIF) is made 4:5 first; once a 4:5 is approved, make its 9:16 Story
     version by AI extension, never a new layout: `node tools/extend-to-story.mjs --in <approved 4:5>
-    --out <drafts/…> --above "<what continues above>" --below "<what continues below>"`. Use its
-    output as-is (don't paste the original back). On approval it goes to `final/` like the 4:5.
+    --out drafts/<the 4:5's name>_Story.png --above "<what continues above>" --below "<what continues below>" --paste`,
+    so the ad's text and product stay pixel-identical. A flat background that code can extend without hurting the
+    design is extended by code: that bar takes `plain` as its text, and when both do, `--smear` instead (no
+    generation); only a bar that must continue part of the design (a photo, an illustration, a texture) goes to AI. Continue only what the 4:5 already shows (background, the rest of
+    a head it shows); a body part it crops out (the face above a neck) gets invented and comes out wrong. On approval it
+    goes to `final/` keeping the 4:5's V.
 11. **Meta copy** — when the ad runs on Meta, its headline and primary text (**write-meta-copy**),
     before upload (**upload-ads**).

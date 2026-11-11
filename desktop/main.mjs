@@ -98,7 +98,7 @@ async function startStudio(adpk, onLine) {
 }
 
 const loading = (text) => `data:text/html;charset=utf-8,${encodeURIComponent(`<!doctype html><title>Ad Production Kit</title>
-<body style="margin:0;height:100vh;display:grid;place-items:center;font:14px -apple-system,system-ui,sans-serif;color:#74716c;background:#fafaf9">
+<body style="margin:0;height:100vh;display:grid;place-items:center;font:14px -apple-system,system-ui,sans-serif;color:#8c8c8c;background:#171717">
 <p id="t">${text}</p></body>`)}`;
 
 function menu() {
@@ -134,7 +134,7 @@ function menu() {
 }
 
 async function open() {
-  win = new BrowserWindow({ width: 1440, height: 900, minWidth: 900, minHeight: 600, title: 'Ad Production Kit', backgroundColor: '#fafaf9' });
+  win = new BrowserWindow({ width: 1440, height: 900, minWidth: 900, minHeight: 600, title: 'Ad Production Kit', backgroundColor: '#171717' });
   // Links that leave Studio open in the browser.
   win.webContents.setWindowOpenHandler(({ url }) => { shell.openExternal(url); return { action: 'deny' }; });
   win.on('closed', () => { win = null; });

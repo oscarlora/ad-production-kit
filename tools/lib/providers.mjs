@@ -1,7 +1,8 @@
-// providers.mjs — the locked model list, kie.ai (the generation provider) with the optional Vercel AI
-// Gateway fallback, per-workspace keys, reference hosting and saving results, shared by generate-*.mjs.
+// providers.mjs — the locked model list, kie.ai (the generation provider) with the optional sunra.ai
+// and Vercel AI Gateway fallbacks, per-workspace keys, reference hosting and saving results, shared by
+// generate-*.mjs.
 //
-// Submit once: when kie returns a task id, poll it to the end (a second submission is a second
+// Submit once: when a provider returns a task id, poll it to the end (a second submission is a second
 // charge).
 
 import { existsSync } from 'node:fs';
@@ -11,21 +12,22 @@ import { brandDirFrom, extForMime, inferBrand, inferWorkspace, loadEnv, mimeOf, 
 import { fetchMissing, r2FromEnv } from './r2.mjs';
 
 // The only models tools accept by name. kie = its model id (generate-*.mjs add the per-mode suffix);
-// gateway = the same model's AI Gateway id, set only where the Gateway catalog carries it;
+// sunra = the same model on sunra.ai (https://sunra.ai/models; tools add /<operation>) and gateway =
+// its AI Gateway id, each set only where that catalog carries it;
 // fallback = the model to switch to when this one can't do the job (only the user switches).
 // Request shapes and limits per model live in each tool, from the doc linked here.
 export const MODELS = {
-  'gpt-image-2.6':         { kind: 'image', kie: 'gpt-image-2-6/flare', gateway: 'openai/gpt-image-2.6-flare', fallback: 'nano-banana-2.1',
+  'gpt-image-2.6':         { kind: 'image', kie: 'gpt-image-2-6/flare', sunra: 'openai/gpt-image-2.6-flare', gateway: 'openai/gpt-image-2.6-flare', fallback: 'nano-banana-2.1',
     doc: 'https://docs.kie.ai/market/gpt/gpt-image-2-6-flare-text-to-image.md' }, // + -image-to-image.md
-  'nano-banana-2.1':       { kind: 'image', kie: 'nano-banana-2-1', gateway: 'google/gemini-nano-banana-2.1',
+  'nano-banana-2.1':       { kind: 'image', kie: 'nano-banana-2-1', sunra: 'google/gemini-nano-banana-2.1', gateway: 'google/gemini-nano-banana-2.1',
     doc: 'https://docs.kie.ai/market/google/nanobanana-2-1.md' },
-  'minimax-h3':            { kind: 'video', kie: 'minimax-h3', fallback: 'gemini-omni-1.1-flash',
+  'minimax-h3':            { kind: 'video', kie: 'minimax-h3', sunra: 'minimax/minimax-h3', fallback: 'gemini-omni-1.2-flash',
     doc: 'https://docs.kie.ai/market/minimax-h3/text-to-video.md' }, // + image-to-video.md, reference-to-video.md
-  'gemini-omni-1.1-flash': { kind: 'video', kie: 'google/gemini-omni-flash-1-1', fallback: 'seedance-2.5',
-    doc: 'https://docs.kie.ai/market/google/gemini-omni-flash-1-1.md' },
-  'seedance-2.5':          { kind: 'video', kie: 'bytedance/seedance-2-5', gateway: 'bytedance/seedance-2.5',
+  'gemini-omni-1.2-flash': { kind: 'video', kie: 'google/gemini-omni-flash-1-2', sunra: 'google/gemini-omni-1.2-flash', fallback: 'seedance-2.5',
+    doc: 'https://docs.kie.ai/market/google/gemini-omni-flash-1-2.md' },
+  'seedance-2.5':          { kind: 'video', kie: 'bytedance/seedance-2-5', sunra: 'bytedance/seedance-2.5', gateway: 'bytedance/seedance-2.5',
     doc: 'https://docs.kie.ai/market/bytedance/seedance-2-5.md' },
-  'gemini-3.8-flash-tts':  { kind: 'speech', kie: 'google/gemini-3-8-flash-tts', gateway: 'google/gemini-3.8-flash-tts',
+  'gemini-3.8-flash-tts':  { kind: 'speech', kie: 'google/gemini-3-8-flash-tts', sunra: 'google/gemini-3.8-flash-tts', gateway: 'google/gemini-3.8-flash-tts',
     doc: 'https://docs.kie.ai/market/google/gemini-3-8-flash-tts.md' },
 };
 
@@ -45,13 +47,17 @@ export function pickModel(args, kind, fallbackName) {
 
 // An error whose message is the whole story: errorText prints it without a stack.
 export const userError = (message) => Object.assign(new Error(message), { quiet: true });
-// Marks a failure before anything was generated, so the Gateway may run.
+// Marks a failure before anything was generated, so the next provider may run; blocked(why) is one
+// found locally (a request that provider can't take), before anything is uploaded.
 const preSubmit = (e) => Object.assign(e instanceof Error ? e : new Error(String(e)), { preSubmit: true });
+export const blocked = (why) => preSubmit(userError(why));
 const firstLine = (m) => String(m || '').replace(/\x1b\[[0-9;]*m/g, '').split('\n')[0];
 // Our own and the Gateway's errors print without a stack.
 export const errorText = (e) => (e?.quiet || /^Gateway/.test(e?.name || '') ? `${e.name && e.name !== 'Error' ? e.name + ': ' : ''}${e.message}` : e?.stack || String(e));
 
-const PROVIDER_KEY = { kie: 'KIE_API_KEY', gateway: 'AI_GATEWAY_API_KEY' };
+// In fallback order.
+const PROVIDER_KEY = { kie: 'KIE_API_KEY', sunra: 'SUNRA_API_KEY', gateway: 'AI_GATEWAY_API_KEY' };
+const PROVIDER_NAME = { kie: 'kie', sunra: 'sunra', gateway: 'the AI Gateway' };
 
 // Only the inferred workspace's <WS>_* keys are used (no shared fallback). Sets the unprefixed names
 // the clients read; returns { W, keys } (key presence).
@@ -64,44 +70,50 @@ export function workspaceKeys(paths, from = '--out') {
   return { W, keys };
 }
 
-// --num and --timeout, as every generate-*.mjs reads them; runHelp is their --help lines (with the
-// Gateway's --unlisted-model and --provider unless gateway is null), envHelp the key line.
+// --num and --timeout, as every generate-*.mjs reads them; runHelp is their --help lines, with
+// --unlisted-model (unless unlisted is false) and --provider, plus a line of the fallbacks' limits
+// (providers); envHelp the key line.
 export const runOpts = (args, timeout) => ({ num: Math.max(1, parseInt(args.num || '1', 10)), timeout: parseInt(args.timeout || String(timeout), 10) });
-export const runHelp = (timeout, { num = 'Variations (default 1)', gateway = '' } = {}) => [
+export const runHelp = (timeout, { num = 'Variations (default 1)', providers = '', unlisted = true } = {}) => [
   `  --num <n>                ${num}`,
   `  --timeout <seconds>      Max wait per task (default ${timeout})`,
-  ...(gateway == null ? [] : [
+  ...(unlisted ? [
     "  --unlisted-model <id>    A kie model id outside the list, sent as-is with --model's request shape",
     "                           and no checks. Only with the user's yes",
-    '  --provider kie|gateway   Force one. By default a request kie rejects before generating goes to the',
-    `                           AI Gateway when the workspace has <WS>_AI_GATEWAY_API_KEY${gateway}`,
-  ]),
+  ] : []),
+  '  --provider <p>           kie | sunra | gateway: force one. By default kie; a request it rejects',
+  '                           before generating goes on to sunra.ai (<WS>_SUNRA_API_KEY), then the',
+  '                           AI Gateway (<WS>_AI_GATEWAY_API_KEY)',
+  ...(providers ? [`                           ${providers}`] : []),
 ].join('\n');
-export const envHelp = (from = '--out') => `Env: <WORKSPACE>_KIE_API_KEY; the workspace comes from ${from}.`;
+export const envHelp = (from = '--out') => `Env: <WORKSPACE>_KIE_API_KEY (or _SUNRA_API_KEY alone); the workspace comes from ${from}.`;
 
-// kie, then the Gateway on a pre-submit rejection when the model is on it and the workspace has its
-// key. `blocker` = why kie can't take this request (checked locally, so nothing is uploaded).
-// --provider kie|gateway forces one. Returns { results, provider }.
-export async function runProviders({ entry, provider = 'auto', ws, kie: runKie, gateway: runGateway, blocker }) {
+// The providers that carry the model and whose key the workspace has, in PROVIDER_KEY's order; the
+// next one runs only on a pre-submit rejection. The Gateway is never first. `blocker` = why kie can't
+// take this request (checked locally, so nothing is uploaded); the other runners throw blocked(why).
+// --provider forces one. Returns { results, provider }.
+export async function runProviders({ entry, provider = 'auto', ws, blocker, ...run }) {
   const p = String(provider).toLowerCase();
-  if (!['auto', 'kie', 'gateway'].includes(p)) throw userError(`--provider must be kie or gateway (got "${provider}").`);
-  const gatewayOk = entry.gateway && runGateway && process.env.AI_GATEWAY_API_KEY;
-  if (p === 'gateway') {
-    if (!entry.gateway || !runGateway) throw userError(`${entry.name} isn't on the AI Gateway.`);
-    if (!process.env.AI_GATEWAY_API_KEY) throw userError(`Workspace ${ws} has no AI Gateway key (${ws}_AI_GATEWAY_API_KEY).`);
-    return { results: await runGateway(), provider: 'gateway' };
+  const names = Object.keys(PROVIDER_KEY);
+  if (p !== 'auto' && !names.includes(p)) throw userError(`--provider must be ${names.join(' | ')} (got "${provider}").`);
+  const carries = (q) => run[q] && (q === 'kie' || entry[q]);
+  const keyed = (q) => process.env[PROVIDER_KEY[q]];
+  if (p !== 'auto') {
+    if (!carries(p)) throw userError(`${entry.name} isn't on ${PROVIDER_NAME[p]}.`);
+    if (!keyed(p)) throw userError(`Workspace ${ws} has no ${p} key. Add ${ws}_${PROVIDER_KEY[p]}=... to .env.`);
   }
-  if (!process.env.KIE_API_KEY) throw userError(`Workspace ${ws} has no kie key. Add ${ws}_KIE_API_KEY=... to .env.`);
-  try {
-    if (blocker) throw preSubmit(userError(`${entry.name} on kie: ${blocker}.`));
-    return { results: await runKie(), provider: 'kie' };
-  } catch (e) {
-    if (!e?.preSubmit) throw e;
-    if (p === 'auto' && gatewayOk) {
-      console.error(`note      kie rejected it before generating (${firstLine(e.message).slice(0, 160)}) — using the AI Gateway.`);
-      return { results: await runGateway(), provider: 'gateway' };
+  const chain = p !== 'auto' ? [p] : names.filter((q) => carries(q) && keyed(q));
+  if (p === 'auto' && (!chain.length || chain[0] === 'gateway')) throw userError(`Workspace ${ws} has no kie key. Add ${ws}_KIE_API_KEY=... to .env.`);
+  for (const [i, q] of chain.entries()) {
+    try {
+      if (q === 'kie' && blocker) throw blocked(`${entry.name} on kie: ${blocker}.`);
+      return { results: await run[q](), provider: q };
+    } catch (e) {
+      if (!e?.preSubmit) throw e;
+      const next = chain[i + 1];
+      if (!next) throw userError(`${e.message}${entry.unlisted ? '' : fallbackHint(entry.name)}`);
+      console.error(`note      ${q} rejected it before generating (${firstLine(e.message).slice(0, 160)}) — using ${PROVIDER_NAME[next]}.`);
     }
-    throw userError(`${e.message}${entry.unlisted ? '' : fallbackHint(entry.name)}`);
   }
 }
 
@@ -142,7 +154,7 @@ export function logGatewayWarnings(warnings) {
 }
 
 // A local reference as a public URL for the Gateway: a 1-hour signed R2 URL (uploaded first if R2
-// doesn't have it), or, for a workspace without R2, kie's file hosting.
+// doesn't have it), or, for a workspace without R2, kie's or sunra's file hosting.
 export async function presignRef(refPath, contextPath) {
   if (/^https?:\/\//i.test(refPath)) return refPath;
   const abs = resolve(refPath);
@@ -153,6 +165,7 @@ export async function presignRef(refPath, contextPath) {
   const r2 = workspace && r2FromEnv(loadEnv(), workspace);
   if (!r2) {
     if (process.env.KIE_API_KEY) return kieUpload(abs);
+    if (process.env.SUNRA_API_KEY) return sunraUpload(abs);
     throw userError(`Local references need a public URL: add R2 or a kie key for workspace ${workspace || '?'}, or pass an https URL.`);
   }
   const rel = relative(brandDir, abs).replace(/\\/g, '/');
@@ -178,19 +191,26 @@ export async function kie(path, { base = 'https://api.kie.ai', ...opts } = {}) {
   return json;
 }
 
-// One at a time, so the hosted URLs keep the refs' order.
-export async function kieUploadAll(refs) {
+// One at a time, so the hosted URLs keep the refs' order. upload = kieUpload or sunraUpload.
+export async function uploadAll(refs, upload = kieUpload) {
   const urls = [];
-  for (const r of refs) urls.push(await kieUpload(r));
+  for (const r of refs) urls.push(await upload(r));
   return urls;
+}
+
+// A local file the upload needs (a URL passes through as-is), else null.
+async function localRef(refPath) {
+  if (/^https?:\/\//i.test(refPath)) return null;
+  const abs = resolve(refPath);
+  await fetchMissing(abs);
+  if (!existsSync(abs)) throw userError(`reference not found: ${refPath}`);
+  return abs;
 }
 
 // https://docs.kie.ai/file-upload-api/upload-file-stream.md
 export async function kieUpload(refPath) {
-  if (/^https?:\/\//i.test(refPath)) return refPath;
-  const abs = resolve(refPath);
-  await fetchMissing(abs);
-  if (!existsSync(abs)) throw userError(`reference not found: ${refPath}`);
+  const abs = await localRef(refPath);
+  if (!abs) return refPath;
   const fd = new FormData();
   fd.append('file', new Blob([await readFile(abs)], { type: mimeOf(abs) }), basename(abs));
   fd.append('uploadPath', `${{ image: 'images', video: 'videos' }[typeOf(abs)] || 'audio'}/ad-production-kit`);
@@ -224,6 +244,70 @@ export async function kieJob(model, input, timeoutSec, { pollMs = 5000, pick = k
     if (d.state === 'fail') throw userError(`task ${taskId} failed: ${d.failMsg || 'unknown'}${d.failCode ? ` (failCode ${d.failCode})` : ''}`);
     if (Date.now() > deadline) throw new Error(`task ${taskId} timed out after ${timeoutSec}s (state=${d.state}); it may still finish and bill — check kie's logs before resubmitting`);
     console.error(`  ${taskId} ${d.state || 'pending'}${d.progress ? ` ${d.progress}%` : ''}`);
+    await sleep(pollMs);
+  }
+}
+
+// ---------- sunra.ai ----------
+// Plain REST (https://docs.sunra.ai/multimodal/queue.md). A submit answered with a 4xx made no
+// prediction; a failed prediction is never billed. Uploads are public and never expire.
+export async function sunra(path, { body, ...opts } = {}) {
+  const res = await fetch(`https://api.sunra.ai/v1${path}`, {
+    ...opts, ...(body ? { method: 'POST', body: JSON.stringify(body) } : {}),
+    headers: { Authorization: `Key ${process.env.SUNRA_API_KEY}`, 'Content-Type': 'application/json', ...opts.headers },
+  });
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok) throw Object.assign(userError(`sunra ${path} -> HTTP ${res.status} ${json.error?.code || ''}: ${json.error?.message || JSON.stringify(json)}`), { status: res.status });
+  return json;
+}
+
+// https://docs.sunra.ai/platform/file-upload.md: the same content type on both calls; only the
+// file name's extension is kept.
+export async function sunraUpload(refPath) {
+  const abs = await localRef(refPath);
+  if (!abs) return refPath;
+  const type = mimeOf(abs);
+  const { upload_url, file_url } = await sunra('/storage/upload/initiate', { body: { file_name: `ref${extname(abs).toLowerCase()}`, content_type: type } });
+  const put = await fetch(upload_url, { method: 'PUT', headers: { 'Content-Type': type }, body: await readFile(abs) });
+  if (!put.ok) throw new Error(`upload failed for ${refPath}: HTTP ${put.status}`);
+  console.error(`uploaded  ${basename(abs)} -> ${file_url}`);
+  return file_url;
+}
+
+// One prediction on <model>/<operation>, polled to the end; returns the model's output object (its
+// schema: the model's API tab on sunra.ai). A bad key stops here; another 4xx on submit, or a failed
+// schema check, counts as pre-submit.
+export async function sunraJob(path, input, timeoutSec, { pollMs = 5000 } = {}) {
+  const id = await retryTransient(async () => {
+    try { return (await sunra(`/queue/${path}`, { body: input })).request_id; }
+    catch (e) {
+      if (e.status >= 400 && e.status < 500 && e.status !== 429) Object.assign(e.status === 401 ? e : preSubmit(e), { fatal: true });
+      throw e;
+    }
+  });
+  if (!id) throw new Error(`sunra ${path} returned no request_id`);
+  console.error(`task      ${path} -> ${id}`);
+  const deadline = Date.now() + timeoutSec * 1000;
+  for (;;) {
+    // A status call that fails on the network or the server is retried: the prediction keeps running.
+    const s = await sunra(`/queue/requests/${id}/status`).catch((e) => {
+      if (e.status && e.status < 500 && e.status !== 429) throw e;
+      console.error(`  ${id} status check failed (${firstLine(e.message)}) — retrying`);
+      return {};
+    });
+    if (s.status === 'COMPLETED') {
+      if (!s.success) {
+        const err = s.error || {};
+        const fail = userError(`sunra ${id} failed: ${err.message || 'unknown'} (${[err.code, err.reason].filter(Boolean).join(', ')})`);
+        throw err.reason === 'input_validation_failed' ? preSubmit(fail) : fail;
+      }
+      const out = await sunra(`/queue/requests/${id}`);
+      console.error(`done      ${id}${s.billing?.amount != null ? `  $${s.billing.amount}` : ''}`);
+      return out;
+    }
+    if (s.status === 'CANCELED') throw userError(`sunra ${id} was canceled`);
+    if (Date.now() > deadline) throw new Error(`sunra ${id} timed out after ${timeoutSec}s (status=${s.status}); it may still finish and bill — check sunra's dashboard before resubmitting`);
+    console.error(`  ${id} ${s.status || 'pending'}${s.queue_position ? ` (queue ${s.queue_position})` : ''}`);
     await sleep(pollMs);
   }
 }

@@ -4,8 +4,8 @@ import Link from 'next/link';
 import { useCallback, useMemo, useState } from 'react';
 import { fileUrl, mediaType, openFile, workflowUrl } from '../../lib/client/api.js';
 import { when, words } from '../../lib/client/format.js';
-import { masonry, useBrandData, useColumns, useCopied } from '../../lib/client/hooks.js';
-import { BarSelect, Bars, byId, formatOptions, LoadError, Param, SORTS, statusLabel, statusOf, statusOptions } from '../BrandPage.js';
+import { masonry, useBrandData, useColumns } from '../../lib/client/hooks.js';
+import { BarSelect, Bars, byId, CopyParam, formatOptions, LoadError, Param, SORTS, statusLabel, statusOf, statusOptions } from '../BrandPage.js';
 import Player from '../Player.js';
 import { IcFilm, IcFlow, IcFolder, IcSound, IcStatus } from '../icons.js';
 import ViewerShell from '../ViewerShell.js';
@@ -20,17 +20,6 @@ function imageType(rec) {
 const sentence = (s) => { const w = words(s); return w.charAt(0).toUpperCase() + w.slice(1); };
 
 const Badge = ({ rec }) => <span className="badge" data-status={statusOf(rec)}>{statusLabel(statusOf(rec))}</span>;
-
-// A copyable value; the copy button shows on hover.
-function CopyParam({ label, text, className = '' }) {
-  const [copied, copy] = useCopied();
-  return (
-    <Param label={label} className={`param--copy ${className}`}>
-      <span>{text}</span>
-      <button type="button" className="btn btn--mini" onClick={() => copy(text)}>{copied ? 'Copied' : 'Copy'}</button>
-    </Param>
-  );
-}
 
 // The version and place shown: the ones holding the ad's main file until the user picks others.
 function useVersion(rec) {

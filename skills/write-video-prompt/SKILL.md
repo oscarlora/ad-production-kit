@@ -11,7 +11,7 @@ Lay out each clip prompt for its model, on **write-prompt**'s rules, then genera
 
 `tools/generate-video.mjs`; each model's clip lengths, reference limits and fallbacks are in its
 `--help`. **MiniMax H3** is the default. **Seedance 2.5** speaks the dialogue it is given and takes
-the longest clips. **Gemini Omni 1.1 Flash** can rework one video it is given.
+the longest clips. **Gemini Omni 1.2 Flash** can rework one video it is given.
 
 Every model adds its own sound; only Seedance takes `--no-audio`. Mute what's left in the edit.
 

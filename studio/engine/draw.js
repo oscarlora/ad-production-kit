@@ -37,7 +37,9 @@ const box = (c, t, env) => ({
   w: val(c.w, t, env.W), h: val(c.h, t, env.H),
 });
 
-// Track transform + clip transform + animation, then fn() draws content centered on (0,0).
+// Track transform + clip transform + animation, then fn() draws content centered on (0,0). Studio's preview keeps
+// where each clip was drawn (env.boxes: [id, its four corners in fractions of the frame], bottom first), from fn's
+// [x, y, w, h], else its box.
 function place(ctx, c, t, env, fn) {
   const tr = c.track.transform;
   ctx.save();
@@ -60,7 +62,11 @@ function place(ctx, c, t, env, fn) {
   const s = val(c.scale, t, 1) * a.s;
   ctx.scale(s, s);
   ctx.translate(b.x - ox, b.y - oy);
-  fn(b);
+  const [x, y, w, h] = fn(b) || [-b.w / 2, -b.h / 2, b.w, b.h];
+  if (env.boxes) {
+    const m = ctx.getTransform();
+    env.boxes.push([c.id, [[x, y], [x + w, y], [x + w, y + h], [x, y + h]].map(([px, py]) => [(m.a * px + m.c * py + m.e) / env.cw, (m.b * px + m.d * py + m.f) / env.ch])]);
+  }
   ctx.restore();
 }
 
@@ -102,6 +108,7 @@ function upright(frame, w, h) {
 // ---- text ----
 // style: font size weight italic color stroke strokeWidth shadow{color blur x y opacity} align lineHeight
 //        maxWidth case accent letterSpacing background{color padX padY radius opacity}
+//        anchor: 'top' hangs the block from y (its first line stays put however many lines follow); default centered
 const fontOf = (st, k = 1) => `${st.italic ? 'italic ' : ''}${st.weight || 400} ${st.size * k}px "${st.font || 'Inter'}", sans-serif`;
 const cased = (s, st) => (st.case === 'upper' ? s.toUpperCase() : st.case === 'lower' ? s.toLowerCase() : s);
 
@@ -249,10 +256,10 @@ function drawTextBlock(ctx, tokens, st, px, color, bg) {
   ctx.textAlign = 'left';
   ctx.textBaseline = 'middle';
   const space = ctx.measureText(' ').width;
-  for (const tk of tokens) { ctx.font = fontOf(st, tk.scale || 1); tk.w = ctx.measureText(cased(tk.s, st)).width; }
+  for (const tk of tokens) tk.w = ctx.measureText(cased(tk.s, st)).width; // at scale 1: a word growing never reflows the lines
   const lh = st.size * (st.lineHeight || 1.15);
   const laid = rows(tokens, st.maxWidth || 960, space);
-  const top = (-(laid.length - 1) * lh) / 2;
+  const top = st.anchor === 'top' ? lh / 2 : (-(laid.length - 1) * lh) / 2;
   if (bg) {
     ctx.save();
     ctx.globalAlpha *= bg.opacity ?? 1;
@@ -270,10 +277,12 @@ function drawTextBlock(ctx, tokens, st, px, color, bg) {
       ctx.globalAlpha *= tk.opacity ?? 1;
       ctx.translate(tk.x + tk.w / 2, top + i * lh);
       if (tk.pop != null) ctx.scale(tk.pop, tk.pop);
-      glyphs(ctx, cased(tk.s, st), -tk.w / 2, 0, st, tk.color || color, sc, px);
+      glyphs(ctx, cased(tk.s, st), (-tk.w * sc) / 2, 0, st, tk.color || color, sc, px); // grows from its center
       ctx.restore();
     }
   });
+  const wide = Math.max(0, ...laid.map((r) => r.width));
+  return [-wide / 2, top - lh / 2, wide, laid.length * lh]; // the block's bounds
 }
 
 // reveal ({ each, dur, delay } in s, or true): the words pop in one after another from the clip's start.

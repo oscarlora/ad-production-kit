@@ -20,7 +20,10 @@ outlines, notebook ink, bold kinetic type…), the frame size and the length.
 The script goes straight into `storyboard.md`'s shot table, as in **make-ai-animation** step 2 (its
 one-story rules apply). Each line shows as on-screen text, so without a voice, time each shot for the
 text to be read aloud (about 2.6 words a second); with one (**generate-voice**), time shots from its
-word timings. Get the user's yes on the words before building.
+word timings, and never pad a shot with silence: the picture fits the voice's own time (only the end card
+holds after the last word). A metaphor first says what it stands for (the goal behind the door, before
+the keys), and an explainer teaches the real mechanism in plain words: both make the ad credible. Open on
+the person with the problem, then show it on them. Get the user's yes on the words before building.
 
 ## 3. Build
 
@@ -31,14 +34,20 @@ word timings. Get the user's yes on the words before building.
   what is unique to the ad lives here; what a second ad needs moves into the kit.
 - `build.mjs` writes `edit.json` from one list of shots (seconds, line, beats, transition):
   - **Text** track: each line as a text clip with `reveal` (words pop in) and `{word|#color}` on its key
-    words, in a band at the top; the picture stays below it.
+    words, or with a voice, one `captions` clip whose words light up as spoken; in a band at the top with
+    `anchor: 'top'`, so lines of any length keep their first line in place; the picture stays below it.
+    For a vertical Meta ad, text, faces, product and CTA stay inside the 4:5 safe zone (y 285–1635).
   - **Picture** track: `{ type: 'custom', draw: 'shot', n, beats }` per shot. Beats
     (`{ name: [t, sound, dB?] }`) set when each motion happens (`env.mg.beat(c, name)`) and play that
     sound from `doc.sounds` at its onset, so a moved beat moves picture and sound together. A push or
     whip transition gets a swish beat just before its cut.
   - **Music** track: a bed under everything (**add-music**).
 - Something on every beat moves the way the line says it (a messenger rides the road as "rides" is
-  read); vary motions and transitions from shot to shot.
+  read); vary motions and transitions from shot to shot. Show the thing itself, up close (the skin
+  cracking, a cross-section), not only its symbol, and hold the result long enough to read.
+- Every transition is motivated: a match cut (zoom until one shot's object is the next one's), a
+  slice or fold into the next view, or a clean cut. A crossfade between unrelated scenes leaves a
+  ghost of the last frame; the `zoom` transition shows the frame's edge.
 
 ## 4. Sounds
 

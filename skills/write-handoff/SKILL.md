@@ -1,6 +1,6 @@
 ---
 name: write-handoff
-description: Optional. Write the short, conversational message that goes with a batch of ads (image, video, or both) when you send them to someone else — a client or a teammate. Two paths — a per-ad sample list, or a high-level note for a new batch dropped into a folder they already have. Also owns the package for a video handed to an editor instead of edited here. Solo users skip it.
+description: Optional. Write the short, conversational message that goes with a batch of ads (image, video, or both) when you send them to someone else — a client or a teammate — with the brand's review link. Two paths — a per-ad sample list, or a high-level note for a new batch dropped into a folder they already have. Also owns the package for a video handed to an editor instead of edited here. Solo users skip it.
 ---
 
 # Write handoff
@@ -54,6 +54,14 @@ Every ad is a different format, across [a sweep of the formats and styles].
 
 If anything needs tweaking, let me know.
 ```
+
+## Review link
+
+Each brand has one review link: every approved ad, each version, why it was made, downloads, and comments on a spot
+or a moment. Put it in the message: `node tools/share-ads.mjs <brand dir>` prints it (the first time, once per
+workspace: `--deploy <WS>`, then set the `<WS>_SHARE_URL` it prints). It updates itself as ads are approved
+(`record-ad.mjs --index`). Comments reach each ad's review loop (**edit-video**, `comments --wait`), so keep it
+running on the ads they review; `--revoke` ends the link.
 
 ## Editor handoff (video)
 

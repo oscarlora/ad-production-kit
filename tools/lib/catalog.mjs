@@ -167,13 +167,14 @@ export function ffprobeJson(file) {
 }
 // A file's audio as mono 16-bit samples at `rate` Hz, or null, on the file's own clock: a video's audio can start
 // after its first frame (often ~0.5 s), so that lead is padded with silence, as the editor and audioTrack do.
-export function pcm(file, rate) {
-  const r = run('ffmpeg', ['-v', 'quiet', '-copyts', '-i', file, '-vn', '-af', 'aresample=async=1:first_pts=0', '-ac', '1', '-ar', String(rate), '-f', 's16le', '-'], { allowFail: true, binary: true });
+export function pcm(file, rate, highpass = 0) {
+  const af = `${highpass ? `highpass=f=${highpass},` : ''}aresample=async=1:first_pts=0`;
+  const r = run('ffmpeg', ['-v', 'quiet', '-copyts', '-i', file, '-vn', '-af', af, '-ac', '1', '-ar', String(rate), '-f', 's16le', '-'], { allowFail: true, binary: true });
   return r.stdout?.length ? new Int16Array(r.stdout.buffer, r.stdout.byteOffset, Math.floor(r.stdout.length / 2)) : null;
 }
-// Loudness of a file's audio in 10 ms frames (dB), or null.
-export function loudness(file) {
-  const samples = pcm(file, 16000);
+// Loudness of a file's audio in 10 ms frames (dB), or null; highpass (Hz) hears only what's above it (an s, a sh).
+export function loudness(file, highpass = 0) {
+  const samples = pcm(file, 16000, highpass);
   if (!samples) return null;
   const hop = 160, db = [];
   for (let i = 0; i + hop <= samples.length; i += hop) { let s = 0; for (let j = i; j < i + hop; j++) s += (samples[j] / 32768) ** 2; db.push(10 * Math.log10(s / hop + 1e-12)); }

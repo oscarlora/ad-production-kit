@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // pull-media.mjs — fetch media into a local cache for catalog-media. Sources: a local folder/file, a
-// Google Drive link or id (workspace creds, else the public link), an Air.inc board share link, or a
+// Google Drive link or id (workspace creds, else the public link), an Air.inc board or Frame.io share link, or a
 // URL (yt-dlp if present, else a direct fetch). Any other service gets a pull<Service> on pullAir's pattern
 // the first time it's used (skills/pull-media). Writes <out>/.links.json: { <file>: where it came from },
 // the file's own link when the service gives one (Drive), else the source link.
@@ -125,6 +125,54 @@ async function pullAir(source, out, { dryRun } = {}) {
   return n;
 }
 
+// A Frame.io share link (f.io/<code> or next.frame.io/share/<id>…), no key: the share's own GraphQL API (the web
+// viewer's) lists its files and folders and gives each original. Files in folders are named by their folder path
+// ("AG028 - V2 - AG028-1.mp4"); a version stack brings every version.
+async function pullFrameio(source, out, { dryRun } = {}) {
+  const url = (await fetch(source, { method: 'HEAD', redirect: 'follow' }).catch(() => null))?.url || source;
+  const share = url.match(/\/share\/([0-9a-f-]{36})/)?.[1];
+  if (!share) { console.error('Frame.io: pass a share link (f.io/<code> or next.frame.io/share/<id>).'); process.exit(1); }
+  const headers = { 'content-type': 'application/json', 'apollographql-client-name': 'web-app', 'x-frameio-share-authentication': Buffer.from(share).toString('base64') };
+  const post = async (query, variables) => {
+    const j = await (await fetch('https://api.frame.io/graphql', { method: 'POST', headers, body: JSON.stringify({ query, variables: { s: share, ...variables } }) })).json();
+    if (j.errors) { console.error(`Frame.io: ${j.errors[0].message} (is the share link public, with downloads on?)`); process.exit(1); }
+    return j.data.share;
+  };
+  const MEDIA = 'id name ... on VideoAsset { media { filesize original { downloadUrl } } } ... on ImageAsset { media { filesize original { downloadUrl } } } ... on AudioAsset { media { filesize original { downloadUrl } } }';
+  const files = [];
+  const walk = async (folderId, path) => {
+    for (let after = null; ;) {
+      const { assets } = await post(`query($s: ID!, $f: ID, $a: String) { share(by: {shareId: $s}) { ... on AssetAggregate { assets(folderId: $f, page: {first: 100, after: $a}) {
+        nodes { __typename ${MEDIA} ... on VersionStackAsset { versions { id } } } pageInfo { hasNextPage endCursor } } } } }`, { f: folderId, a: after });
+      for (const a of assets.nodes) {
+        if (a.__typename === 'FolderAsset') await walk(a.id, [...path, a.name]);
+        else if (a.__typename === 'VersionStackAsset') {
+          const ids = a.versions.map((v) => v.id);
+          const { assets: v } = await post(`query($s: ID!, $ids: [ID!]!, $n: NonNegativeInt!) { share(by: {shareId: $s}) { assets(filter: {assetIds: $ids}, page: {first: $n}) { nodes { ${MEDIA} } } } }`, { ids, n: ids.length });
+          v.nodes.forEach((x, i) => files.push({ ...x, path, version: i + 1 }));
+        } else files.push({ ...a, path });
+      }
+      if (!assets.pageInfo.hasNextPage) break;
+      after = assets.pageInfo.endCursor;
+    }
+  };
+  await walk(null, []);
+  console.log(`Frame.io share ${share}: ${files.length} files`);
+  let n = 0;
+  for (const f of files) {
+    const dot = f.name.lastIndexOf('.'), stem = dot > 0 ? f.name.slice(0, dot) : f.name, ext = dot > 0 ? f.name.slice(dot) : '';
+    const name = [...f.path, f.version ? `${stem} v${f.version}${ext}` : f.name].join(' - ').replace(/[/:\\]/g, '_');
+    const src = f.media?.original?.downloadUrl;
+    if (!isMedia(name) || !src) { console.error(`  skip ${name}: not media`); continue; }
+    if (existsSync(join(out, name)) && statSync(join(out, name)).size === f.media.filesize) continue; // a re-run fetches only what's missing
+    if (dryRun) { console.log(`  would download ${name} (${(f.media.filesize / 1e6).toFixed(1)} MB)`); continue; }
+    const file = uniqueName(out, name);
+    try { await downloadFile(src, join(out, file)); } catch (e) { console.error(`  ✗ ${name}: ${e.message}`); continue; }
+    console.log(`  ↓ ${file}`); n++;
+  }
+  return n;
+}
+
 // Every sub-board id under a shared board, depth first.
 async function airSubBoards(api, id) {
   const r = await fetch(`${api}/boards/${id}`);
@@ -134,12 +182,12 @@ async function airSubBoards(api, id) {
   return ids;
 }
 
-const HELP = `pull-media.mjs — fetch media (folder, Drive, Air board, URL) into a local cache for catalog-media
+const HELP = `pull-media.mjs — fetch media (folder, Drive, Air board, Frame.io share, URL) into a local cache for catalog-media
 
   node tools/pull-media.mjs --source "<link|path>" --out <cache dir> [--workspace <WS>] [--brand <dir>] [--dry-run]
     --workspace  whose Drive creds to use (default: from --out or --brand)
     --brand      makes a Drive folder pull incremental (drive-sources.json)
-    --dry-run    list what a Drive or Air pull would download`;
+    --dry-run    list what a Drive, Air or Frame.io pull would download`;
 
 async function pullUrl(source, out) {
   const social = /(youtube\.com|youtu\.be|vimeo\.com|tiktok\.com|instagram\.com|facebook\.com)/i.test(source);
@@ -169,6 +217,7 @@ let n = 0;
 if (existsSync(source)) n = pullLocal(source, resolve(out));
 else if (/drive\.google\.com/.test(source) || driveId(source)) n = await pullDrive(source, resolve(out), W, { brand: a.brand && resolve(a.brand), dryRun: !!a['dry-run'] });
 else if (/air\.inc\//i.test(source)) n = await pullAir(source, resolve(out), { dryRun: !!a['dry-run'] });
+else if (/(^https?:\/\/)?(f\.io|[\w.]*frame\.io)\//i.test(source)) n = await pullFrameio(source, resolve(out), { dryRun: !!a['dry-run'] });
 else if (/^https?:\/\//.test(source)) n = await pullUrl(source, resolve(out));
 else { console.error('Unrecognized source. Use a local path, a Drive link/id, or a URL.'); process.exit(1); }
 if (!a['dry-run']) {

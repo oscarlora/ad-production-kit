@@ -15,7 +15,7 @@ import { fetchMissing } from './lib/r2.mjs';
 import { audioTrack, describeAudio, transcribeAudio, toTranscript, vocabulary, alignWords, loops, LONG } from './lib/transcribe.mjs';
 
 const HELP = `analyze-media.mjs — describe cataloged media with ${ANALYSIS_MODEL} on kie.ai and fill their records
-(key: <WS>_KIE_API_KEY; optional fallback when kie fails: <WS>_AI_GATEWAY_API_KEY)
+(key: <WS>_KIE_API_KEY; optional fallbacks when kie fails: <WS>_SUNRA_API_KEY, then <WS>_AI_GATEWAY_API_KEY)
 
   node tools/analyze-media.mjs --media <media dir> [--ids 00001,00002 | --all] [--force] [--concurrency 4]
     --all    every record not analyzed yet

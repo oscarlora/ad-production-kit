@@ -3,6 +3,7 @@
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { basename, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { mediaType } from '../client/api.js';
+import { adRest } from '../client/format.js';
 import { isSeparator, tableCells } from '../markdown.js';
 import { repoRoot } from './root.js';
 import { catalogLib } from './tools.js';
@@ -53,13 +54,13 @@ function personaDetail(list, slug) {
 
 const posix = (p) => p.split(sep).join('/');
 
-// The ad's files: the ones its record names, else its exported ones (final/, then the folder: <id>_V1_…), one per
-// file name. [{ abs, mtime, version, place }]: version from "<id>_V2_…" or an upload name ("ID-2_STORY.png",
-// whose place is Story), else the file's own name; the record's first file is the one shown.
+// The ad's files: the ones its record names, else its exported ones (final/, then the folder: <id>_<initials>_V1_…), one per
+// file name. [{ abs, mtime, version, place }]: version from "<id>_V2_…" (place Feed, or Story when it ends _Story) or
+// an upload name ("ID-2_STORY.png", whose place is Story), else the file's own name; the record's first file is the one shown.
 function filesOf(rec, folderAbs) {
   const named = [rec?.generation?.output, ...(rec?.generation?.outputs || [])].filter(Boolean).map((p) => resolve(repoRoot(), p));
   const exported = named.length || !folderAbs ? [] : [join(folderAbs, 'final'), folderAbs].flatMap((dir) => {
-    try { return readdirSync(dir).filter((n) => /^\d+_V\d+_/.test(n) && ['image', 'video'].includes(mediaType(n))).map((n) => join(dir, n)); } catch { return []; }
+    try { return readdirSync(dir).filter((n) => /^V\d+_/.test(adRest(n) || '') && ['image', 'video'].includes(mediaType(n))).map((n) => join(dir, n)); } catch { return []; }
   });
   const seen = new Set(), out = [];
   for (const abs of [...named, ...exported]) {
@@ -68,7 +69,8 @@ function filesOf(rec, folderAbs) {
     try { if (!statSync(abs).isFile()) continue; } catch { continue; }
     seen.add(name);
     const m = /_V(\d+)_/.exec(name) || /-(\d+)_([A-Z]+)\.\w+$/.exec(name);
-    out.push({ abs, mtime: statSync(abs).mtimeMs, version: m ? `V${m[1]}` : name.replace(/\.\w+$/, ''), place: m?.[2] ? m[2][0] + m[2].slice(1).toLowerCase() : '' });
+    const place = m?.[2] ? m[2][0] + m[2].slice(1).toLowerCase() : m ? (/_Story\.\w+$/.test(name) ? 'Story' : 'Feed') : '';
+    out.push({ abs, mtime: statSync(abs).mtimeMs, version: m ? `V${m[1]}` : name.replace(/\.\w+$/, ''), place });
   }
   return out;
 }
@@ -108,7 +110,7 @@ function adsWithPlan(recs, plans) {
   return [...recs, ...planned].sort((x, y) => (x.id || 0) - (y.id || 0));
 }
 
-// Ad folders in outputs/ ("<id>_<Concept>_<Format>_…").
+// Ad folders in outputs/ ("<id>_<initials>_<Concept>_<Format>_…").
 export function adFolders(outputs) {
   try { return readdirSync(outputs, { withFileTypes: true }).filter((d) => d.isDirectory() && /^\d+_/.test(d.name)).map((d) => d.name); } catch { return []; }
 }

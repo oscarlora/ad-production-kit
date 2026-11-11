@@ -37,6 +37,8 @@ export const keyed = (v) => Array.isArray(v) && Array.isArray(v[0]);
 const VISUAL = new Set(['video', 'image', 'text', 'captions', 'rect', 'hide', 'custom']);
 export const isVisual = (c) => VISUAL.has(c.type);
 export const hasSound = (c) => c.type === 'audio' || (c.type === 'video' && !c.mute);
+// A raw clip's type: its own, else from its file, lines or text.
+export const clipType = (c) => c.type || (c.src && /\.(mp3|wav|m4a|aac|ogg|opus|flac)$/i.test(c.src) ? 'audio' : c.src && /\.(png|jpe?g|webp|gif|avif)$/i.test(c.src) ? 'image' : c.src ? 'video' : c.lines ? 'captions' : 'text');
 
 // Defaults filled in, clips sorted, each clip linked to its track and neighbours. Times are seconds.
 export function normalize(raw) {
@@ -45,7 +47,7 @@ export function normalize(raw) {
   let end = 0;
   const tracks = (raw.tracks || []).map((tr, ti) => {
     const clips = (tr.clips || []).map((c, ci) => {
-      const type = c.type || (c.src && /\.(mp3|wav|m4a|aac|ogg|opus|flac)$/i.test(c.src) ? 'audio' : c.src && /\.(png|jpe?g|webp|gif|avif)$/i.test(c.src) ? 'image' : c.src ? 'video' : c.lines ? 'captions' : 'text');
+      const type = clipType(c);
       const at = c.at ?? 0;
       let stop = c.end ?? (c.dur != null ? at + c.dur : null);
       if (type === 'captions' && stop == null) stop = Math.max(at, ...(c.lines || []).map((l) => l.end ?? 0));
@@ -120,13 +122,16 @@ const BED = Symbol('bed');
 // edit is rearranged.
 export const isBed = (c) => !c.lines && (c.at ?? 0) <= 1e-3 && (endOf(c) ?? Infinity) > 5 &&
   (c.type === 'audio' || /\.(mp3|m4a|wav|aac|ogg|flac)$/i.test(c.src || ''));
+// Where a version joins its base: [the base time its body starts at, the version's own length before it].
+export function joint(raw, base) {
+  const starts = (base.tracks || []).flatMap((tr) => (tr.clips || []).filter((c) => c.name === raw.from).map((c) => c.at ?? 0));
+  if (!starts.length) throw new Error(`${raw.base} has no clip named "${raw.from}" (the version's "from")`);
+  return [Math.min(...starts), Math.max(0, ...(raw.tracks || []).flatMap((tr) => (tr.clips || []).map((c) => endOf(c) ?? 0)))];
+}
 export function compose(raw, base) {
   if (base.base) throw new Error(`${raw.base} has a base itself`);
-  const doc = structuredClone(base);
-  const starts = (doc.tracks || []).flatMap((tr) => (tr.clips || []).filter((c) => c.name === raw.from).map((c) => c.at ?? 0));
-  if (!starts.length) throw new Error(`${raw.base} has no clip named "${raw.from}" (the version's "from")`);
-  const start = Math.min(...starts), own = structuredClone(raw.tracks || []);
-  const head = Math.max(0, ...own.flatMap((tr) => (tr.clips || []).map((c) => endOf(c) ?? 0)));
+  const doc = structuredClone(base), own = structuredClone(raw.tracks || []);
+  const [start, head] = joint(raw, base);
   // A sound bed that opens the base opens the version too, from its own start, under the new hook.
   // The base before `from` goes: keyframes hold the value they had there, clips crossing it start there.
   const cutKeys = (h, k, v) => {
@@ -166,4 +171,87 @@ export function compose(raw, base) {
   delete doc.output;
   if (doc.duration != null) doc.duration = r3(doc.duration - start + head);
   return Object.assign(doc, rest);
+}
+
+// Keyframes on the timeline clock after removing [a, b): keys inside drop, later ones move up.
+const cutKeys = (v, a, b) => {
+  const k = v.filter(([t]) => t < a || t >= b).map(([t, ...rest]) => [t >= b ? r3(t - (b - a)) : t, ...rest]);
+  return k.length ? k : val(v, a); // every key cut: hold the value it had there
+};
+const cutValues = (o, a, b) => eachKeyed(o, (h, k, v) => { h[k] = cutKeys(v, a, b); });
+// A sound bed runs alone on its track; a voice track's first take (from 0, past 5 s) is not one.
+export const bedOn = (tr, c) => isBed(c) && (tr.clips || []).length === 1;
+// Remove [a, b] from every track of a document (times to the millisecond, so cut edges meet exactly).
+export function cutDoc(doc, a, b) {
+  const d = b - a, shift = (t) => (t >= b ? r3(t - d) : t > a ? a : t);
+  for (const tr of doc.tracks || []) {
+    cutValues(tr, a, b);
+    const out = [];
+    for (const c of tr.clips || []) {
+      const at = c.at ?? 0, end = endOf(c) ?? Infinity, rate = c.rate ?? 1;
+      if (c.dur != null) { c.end = end; delete c.dur; } // the branches below move `end`
+      cutValues(c, a, b);
+      // a caption line goes only when its words are all inside the cut (a lead-in cut often starts before its first word)
+      if (c.lines) c.lines = c.lines.filter((l) => !(l.words?.length ? l.words.every(([, s, e]) => s >= a && e <= b) : l.at >= a && l.end <= b)).map((l) => ({ ...l, at: shift(l.at), end: shift(l.end), ...(l.words && { words: l.words.map(([w, s, e, ...x]) => [w, shift(s), shift(e), ...x]) }) }));
+      if (end <= a || at >= b) { if (at >= b) { c.at = r3(at - d); if (c.end != null) c.end = r3(end - d); } out.push(c); continue; }
+      if (at >= a && end <= b) continue; // wholly inside: gone
+      if (at < a && end > b && bedOn(tr, c)) { c.end = r3(end - d); out.push(c); continue; } // a music bed plays on unbroken
+      if (at < a && end > b && c.src && !c.lines) { // spans the cut: split, the second part skips the cut's source
+        out.push({ ...c, end: a });
+        out.push({ ...c, at: a, in: r3((c.in ?? 0) + (b - at) * rate), ...(c.end != null && { end: r3(end - d) }), transition: undefined });
+        continue;
+      }
+      if (at < a) { if (c.end != null || c.dur != null) { c.end = r3(Math.max(a, end - d)); delete c.dur; } } // trims its tail (or the cut, inside it)
+      else { c.in = r3((c.in ?? 0) + (b - at) * rate); c.at = a; if (c.end != null) c.end = r3(end - d); } // trims its head
+      out.push(c);
+    }
+    const kept = [];
+    for (const c of out) { // slivers left by rounding: the clip before them holds over their time, so no frame goes black
+      if (c.end == null || c.end - (c.at ?? 0) >= 1 / (doc.fps || 30)) { kept.push(c); continue; }
+      const prev = kept.at(-1);
+      if (prev?.end != null && Math.abs(prev.end - (c.at ?? 0)) < 1e-3) prev.end = c.end;
+    }
+    tr.clips = kept;
+  }
+  if (doc.duration != null) doc.duration = r3(doc.duration - d);
+}
+
+// A track plays one clip at a time: clips that overlap an earlier one on their track move to a copy of the track
+// just above it ("<name> 2", …), where they still draw over it. A clip with no end written is taken to end before the
+// next. → how many moved.
+export function unstack(doc) {
+  let moved = 0;
+  for (let i = 0; i < (doc.tracks || []).length; i++) {
+    const tr = doc.tracks[i], keep = [], over = [];
+    let end = -Infinity;
+    for (const c of [...(tr.clips || [])].sort((a, b) => (a.at ?? 0) - (b.at ?? 0))) {
+      if (c.lines || (c.at ?? 0) >= end - 1e-3) { keep.push(c); if (!c.lines) end = endOf(c) ?? -Infinity; } else over.push(c);
+    }
+    if (!over.length) continue;
+    moved += over.length;
+    const { clips: _c, ...rest } = tr, base = (tr.name || `Track ${i + 1}`).replace(/ \d+$/, ''), taken = new Set(doc.tracks.map((x) => x.name));
+    let n = 2;
+    while (taken.has(`${base} ${n}`)) n++;
+    tr.clips = keep;
+    doc.tracks.splice(i--, 0, { ...structuredClone(rest), name: `${base} ${n}`, clips: over }); // looked at next, for clips overlapping there
+  }
+  return moved;
+}
+
+// The edit in another frame size: positions and sizes scale with it (media still fills the frame).
+export function reframe(doc, [nw, nh]) {
+  const [W, H] = doc.size || [1080, 1920], sx = nw / W, sy = nh / H;
+  const scale = (v, f) => (keyed(v) ? v.map(([t, x, ...e]) => [t, Math.round(x * f), ...e]) : typeof v === 'number' ? Math.round(v * f) : v);
+  const place = (o) => {
+    for (const [k, f] of [['x', sx], ['w', sx], ['y', sy], ['h', sy]]) if (o[k] != null) o[k] = scale(o[k], f);
+    if (o.origin) o.origin = [Math.round(o.origin[0] * sx), Math.round(o.origin[1] * sy)];
+  };
+  for (const tr of doc.tracks || []) {
+    if (tr.transform) place(tr.transform);
+    for (const c of tr.clips || []) {
+      place(c);
+      if (c.style?.maxWidth) c.style.maxWidth = Math.round(c.style.maxWidth * sx);
+    }
+  }
+  doc.size = [nw, nh];
 }

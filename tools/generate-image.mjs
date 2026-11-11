@@ -9,8 +9,8 @@ import { tmpdir } from 'node:os';
 import { cleanImage } from './lib/clean-image.mjs';
 import { die, imageFitCmd, parseArgs, runAsync, usage } from './lib/catalog.mjs';
 import {
-  envHelp, errorText, gatewayClient, kieJob, kieUploadAll, logGatewayWarnings, pickModel, runHelp, runOpts, runProviders, saveResults,
-  times, userError, workspaceKeys, writeSidecars,
+  blocked, envHelp, errorText, gatewayClient, kieJob, logGatewayWarnings, pickModel, runHelp, runOpts, runProviders, saveResults,
+  sunraJob, sunraUpload, times, uploadAll, userError, workspaceKeys, writeSidecars,
 } from './lib/providers.mjs';
 
 const HELP = `generate-image.mjs — image ad generator (kie.ai)
@@ -74,7 +74,7 @@ function checkRefs(shape, refs) {
 }
 
 async function viaKie({ entry, prompt, refs, aspect, resolution, background, format, frames, frameMs, num, timeout }) {
-  const refUrls = await kieUploadAll(refs);
+  const refUrls = await uploadAll(refs);
   const input = { prompt, aspect_ratio: aspect, resolution };
   let id = entry.kie;
   if ((entry.shape || entry.name) === 'gpt-image-2.6') {
@@ -89,6 +89,23 @@ async function viaKie({ entry, prompt, refs, aspect, resolution, background, for
     if (refUrls.length) input.image_input = refUrls;
   }
   return times(num, () => kieJob(id, input, timeout, { pollMs: 2000 }));
+}
+
+// sunra: GPT Image takes a pixel size; Nano Banana its own aspect list, PNG only. No GIFs.
+async function viaSunra({ entry, prompt, refs, aspect, resolution, background, format, num, timeout }) {
+  const gpt = entry.name === 'gpt-image-2.6';
+  if (format === 'gif') throw userError('GIFs are made on kie only.');
+  if (!gpt && (aspect === 'auto' || format !== 'png')) throw blocked(`${entry.name} on sunra takes no --aspect auto and makes PNG only.`);
+  const images = await uploadAll(refs, sunraUpload);
+  const input = { prompt, ...(images.length ? { images } : {}) };
+  if (!gpt) Object.assign(input, { aspect_ratio: aspect, resolution });
+  else {
+    if (aspect !== 'auto') [input.width, input.height] = sizeForTier(aspect, resolution).split('x').map(Number);
+    input.output_format = format === 'jpg' ? 'jpeg' : format;
+    if (background) input.background = background;
+  }
+  const path = `${entry.sunra}/${images.length ? 'image-editing' : 'text-to-image'}`;
+  return times(num, async () => (await sunraJob(path, input, timeout, { pollMs: 2000 })).images.map((im) => im.url));
 }
 
 // Long edge from the tier, short edge from the aspect, both multiples of 16 (GPT Image needs it).
@@ -193,7 +210,7 @@ async function main() {
 
   const opts = { entry, prompt, refs, aspect, resolution, background, format, frames, frameMs, num, timeout };
   const ran = await runProviders({
-    entry, provider: args.provider, ws: W, kie: () => viaKie(opts), gateway: () => viaGateway(opts),
+    entry, provider: args.provider, ws: W, kie: () => viaKie(opts), sunra: () => viaSunra(opts), gateway: () => viaGateway(opts),
     blocker: entry.unlisted ? null : kieBlocker(shape, aspect),
   });
   const saved = await saveResults(ran.results, out, { fallbackExt: format, transform: cleanImage });

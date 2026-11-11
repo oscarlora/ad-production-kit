@@ -31,4 +31,5 @@ they've tried and why it fell short → what actually works, said plainly → on
 scenes the persona can feel → a customer quote with a number or timeframe → a soft call to action.
 For colder personas, keep the product out of the first third.
 
-The locked copy goes in the ad's record (`meta`).
+The locked copy goes in the ad folder's `meta.md`: `**Headline**` over its text, then `**Primary text**` over its
+text. Studio's Meta copy step edits it in place, and the index refresh copies it into the record's `meta`.

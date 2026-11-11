@@ -1,0 +1,215 @@
+// Studio's manual edits to a raw edit document, each in place. ref: a clip [track, clip] or a caption line
+// [track, clip, line] (indices in the file). Times are on the document's clock; every clip has its end written in.
+import { clipType, cutDoc, endOf, isBed, mapTimes, r3 } from './doc.js';
+
+export const MIN = 0.1; // the shortest a clip or line gets (s)
+const same = (a, b) => Math.abs(a - b) < 1e-3;
+const clamp = (x, lo, hi) => Math.min(Math.max(x, lo), hi);
+const clipOf = (doc, ref) => doc.tracks[ref[0]].clips[ref[1]];
+export const get = (doc, ref) => (ref.length === 3 ? clipOf(doc, ref).lines[ref[2]] : clipOf(doc, ref));
+const timed = (c) => ['video', 'audio'].includes(clipType(c)) && !c.loop; // plays a stretch of its source
+// The clip with its link: a media clip of the same name starting with it on another track (a take's picture and voice).
+function group(doc, ref) {
+  const c = clipOf(doc, ref), at = c.at ?? 0;
+  return !c.src || !c.name ? [c] : [c, ...doc.tracks.flatMap((tr, i) => (i === ref[0] ? [] : (tr.clips || []).filter((x) => x.src && x.name === c.name && same(x.at ?? 0, at))))];
+}
+const shift = (clips, d) => mapTimes({ tracks: [{ clips }] }, (t) => r3(t + d));
+// A video or sound with another clip on its track starting where it ends / ending where it starts: a sequence, whose
+// clips stay touching. (Text and graphics over it just stop at their neighbours.)
+const followed = (doc, ref, c) => timed(c) && doc.tracks[ref[0]].clips.some((x) => x !== c && same(x.at ?? 0, endOf(c)));
+const led = (doc, ref, c) => timed(c) && doc.tracks[ref[0]].clips.some((x) => x !== c && same(endOf(x) ?? -1, c.at ?? 0));
+
+// The shift nearest d that leaves each clip in g clear of the others on its track, and none before 0: a track plays
+// one clip at a time.
+function clear(doc, g, d) {
+  const pairs = doc.tracks.flatMap((tr) => { const mine = (tr.clips || []).filter((c) => g.includes(c)); return mine.flatMap((m) => (tr.clips || []).filter((x) => !g.includes(x) && !x.lines).map((x) => [m, x])); });
+  const min = -Math.min(...g.map((c) => c.at ?? 0));
+  const ok = (by) => by >= min - 1e-6 && pairs.every(([m, x]) => endOf(m) + by <= (x.at ?? 0) + 1e-3 || (m.at ?? 0) + by >= endOf(x) - 1e-3);
+  return [d, min, ...pairs.flatMap(([m, x]) => [(x.at ?? 0) - endOf(m), endOf(x) - (m.at ?? 0)])].filter(ok).sort((a, b) => Math.abs(a - d) - Math.abs(b - d))[0];
+}
+// Where the next clip on its track starts, and the one before it ends.
+const nextAt = (doc, ref, c) => Math.min(Infinity, ...doc.tracks[ref[0]].clips.filter((x) => x !== c && !x.lines && (x.at ?? 0) >= endOf(c) - 1e-3).map((x) => x.at ?? 0));
+const prevEnd = (doc, ref, c) => Math.max(0, ...doc.tracks[ref[0]].clips.filter((x) => x !== c && !x.lines && endOf(x) <= (c.at ?? 0) + 1e-3).map(endOf));
+
+// How far (s) a move, or a start or end edge, can go: a clip keeps MIN, stays inside its source (len s, when known)
+// and clear of the other clips on its track (loose: it is leaving for another track); a caption line stays between
+// its neighbours.
+export function limit(doc, ref, mode, d, len, loose) {
+  if (ref.length === 3) {
+    const { lines } = clipOf(doc, ref), l = lines[ref[2]], lo = (lines[ref[2] - 1]?.end ?? 0) - l.at, hi = (lines[ref[2] + 1]?.at ?? Infinity) - l.end;
+    return mode === 'start' ? clamp(d, lo, l.end - l.at - MIN) : mode === 'end' ? clamp(d, MIN - (l.end - l.at), hi) : clamp(d, lo, hi);
+  }
+  const c = clipOf(doc, ref), at = c.at ?? 0, dur = endOf(c) - at, rate = c.rate ?? 1;
+  if (mode === 'move') return loose ? Math.max(d, -Math.min(...group(doc, ref).map((x) => x.at ?? 0))) : clear(doc, group(doc, ref), d);
+  if (mode === 'end') return clamp(d, MIN - dur, Math.min(timed(c) && len ? (len - (c.in ?? 0)) / rate - dur : Infinity, followed(doc, ref, c) ? Infinity : nextAt(doc, ref, c) - endOf(c)));
+  return clamp(d, Math.max(timed(c) ? -(c.in ?? 0) / rate : -Infinity, led(doc, ref, c) ? -Infinity : prevEnd(doc, ref, c) - at), dur - MIN);
+}
+
+// A clip's (and its link's) new source start, start and end. In a sequence (followed), everything after its old end
+// moves with the new one.
+function respan(doc, ref, { in: inS, at, end }) {
+  const c = clipOf(doc, ref), g = group(doc, ref), oldEnd = endOf(c), ripple = followed(doc, ref, c);
+  if (!ripple) end = Math.min(end, nextAt(doc, ref, c)); // never over the next clip
+  const delta = r3(end - oldEnd);
+  for (const x of g) { if (inS != null) x.in = r3(inS); if (at != null) x.at = r3(at); x.end = r3(end); delete x.dur; }
+  if (ripple && delta) mapTimes(doc, (t) => (t >= oldEnd - 1e-3 ? r3(t + delta) : delta < 0 && t > end ? r3(end) : t), new Set(g));
+}
+
+// Move a clip or line (mode 'move'), or its 'start' or 'end' edge, by d seconds. A start edge with a clip ending on
+// it stays put: the clip gives up its head and what follows moves up.
+export function retime(doc, ref, mode, d, len, loose) {
+  d = limit(doc, ref, mode, d, len, loose);
+  const x = get(doc, ref);
+  if (ref.length === 3) {
+    if (mode !== 'end') x.at = r3(x.at + d);
+    if (mode !== 'start') x.end = r3(x.end + d);
+    if (mode === 'move' && x.words) x.words = x.words.map(([w, s, e, ...rest]) => [w, s == null ? s : r3(s + d), e == null ? e : r3(e + d), ...rest]);
+    return;
+  }
+  if (mode === 'move') return shift(group(doc, ref), d);
+  const at = x.at ?? 0, end = endOf(x);
+  if (mode === 'end') return respan(doc, ref, { end: end + d });
+  const inS = timed(x) ? (x.in ?? 0) + d * (x.rate ?? 1) : null;
+  respan(doc, ref, led(doc, ref, x) ? { in: inS, end: end - d } : { in: inS, at: at + d, end });
+}
+
+// The part of its source a media clip plays (the trim panel): from inS, for dur seconds of timeline.
+export const source = (doc, ref, inS, dur) => respan(doc, ref, { in: inS, end: (clipOf(doc, ref).at ?? 0) + dur });
+
+// A media clip's speed: it plays the same stretch of its source, so its length changes.
+export function speed(doc, ref, rate) {
+  const c = clipOf(doc, ref), at = c.at ?? 0, dur = ((endOf(c) - at) * (c.rate ?? 1)) / rate;
+  for (const x of group(doc, ref)) x.rate = rate;
+  respan(doc, ref, { end: at + dur });
+}
+
+// Split the clips under t in two (ref: only that clip and its link; else all but a sound bed). The second part plays
+// on from t; captions and custom layers stay whole. → whether any split.
+export function split(doc, t, ref) {
+  const only = ref && new Set(group(doc, ref));
+  let any = false;
+  for (const tr of doc.tracks) tr.clips = (tr.clips || []).flatMap((c) => {
+    const at = c.at ?? 0, end = endOf(c);
+    if (c.lines || clipType(c) === 'custom' || (only ? !only.has(c) : isBed(c)) || t - at < MIN / 2 || end - t < MIN / 2) return [c];
+    any = true;
+    const { enter, transition, reveal, fadeIn, dur, ...rest } = structuredClone(c);
+    const { exit, fadeOut, dur: _d, ...head } = c;
+    return [{ ...head, end: r3(t) }, { ...rest, at: r3(t), end, ...(timed(c) && { in: r3((c.in ?? 0) + (t - at) * (c.rate ?? 1)) }) }];
+  });
+  return any;
+}
+
+// Delete a clip (with its link) or a caption line.
+export function remove(doc, ref) {
+  if (ref.length === 3) return void clipOf(doc, ref).lines.splice(ref[2], 1);
+  const g = new Set(group(doc, ref));
+  for (const tr of doc.tracks) tr.clips = (tr.clips || []).filter((c) => !g.has(c));
+}
+
+// Delete a clip or caption line and its time from every track: what follows moves up.
+export function rippleRemove(doc, ref) {
+  const x = get(doc, ref);
+  cutDoc(doc, x.at ?? 0, ref.length === 3 ? x.end : endOf(x));
+}
+
+// A copy of a clip (and its link) right after it. → the copy's ref.
+export function duplicate(doc, ref) {
+  const g = new Set(group(doc, ref)), c = clipOf(doc, ref), d = endOf(c) - (c.at ?? 0), copies = [];
+  for (const tr of doc.tracks) tr.clips = (tr.clips || []).flatMap((x) => {
+    if (!g.has(x)) return [x];
+    const { transition, ...copy } = structuredClone(x);
+    shift([copy], d);
+    copies.push(copy);
+    return [x, copy];
+  });
+  shift(copies, clear(doc, copies, 0)); // into the nearest free stretch
+  return [ref[0], ref[1] + 1];
+}
+
+// Move a clip to the track named `name` (made when the document lacks it; '' makes a new top track, named after the
+// clip's type), into the free stretch nearest its time there. → its new ref.
+export function toTrack(doc, ref, name) {
+  const [c] = doc.tracks[ref[0]].clips.splice(ref[1], 1), type = clipType(c);
+  delete c.transition;
+  let ti = name ? doc.tracks.findIndex((x, i) => (x.name || `Track ${i + 1}`) === name) : -1;
+  if (ti < 0) {
+    const base = type[0].toUpperCase() + type.slice(1), taken = new Set(doc.tracks.map((x) => x.name));
+    let n = 1;
+    while (!name && taken.has(n > 1 ? `${base} ${n}` : base)) n++;
+    doc.tracks[name ? 'push' : 'unshift']({ name: name || (n > 1 ? `${base} ${n}` : base), clips: [] });
+    ti = name ? doc.tracks.length - 1 : 0;
+  }
+  const clips = doc.tracks[ti].clips ||= [];
+  clips.push(c);
+  shift([c], clear(doc, [c], 0));
+  return [ti, clips.length - 1];
+}
+
+// Move the track named `name` to just above the one named `before` (null: to the bottom). → whether it moved.
+export function orderTrack(doc, name, before) {
+  const named = (x, i) => x.name || `Track ${i + 1}`, from = (doc.tracks || []).findIndex((x, i) => named(x, i) === name);
+  const target = before == null ? null : doc.tracks.find((x, i) => named(x, i) === before);
+  if (from < 0 || (before != null && !target) || target === doc.tracks[from]) return false;
+  const [tr] = doc.tracks.splice(from, 1), to = target ? doc.tracks.indexOf(target) : doc.tracks.length;
+  doc.tracks.splice(to, 0, tr);
+  return to !== from;
+}
+
+// Rename the track named `name` (not to a name another track has). → whether it was renamed.
+export function renameTrack(doc, name, to) {
+  const named = (x, i) => x.name || `Track ${i + 1}`, tr = (doc.tracks || []).find((x, i) => named(x, i) === name);
+  if (!tr || !to || doc.tracks.some((x, i) => named(x, i) === to)) return false;
+  tr.name = to;
+  return true;
+}
+
+// Delete the track named `name`, with its clips. → whether the document had it.
+export function removeTrack(doc, name) {
+  const i = (doc.tracks || []).findIndex((x, k) => (x.name || `Track ${k + 1}`) === name);
+  if (i >= 0) doc.tracks.splice(i, 1);
+  return i >= 0;
+}
+
+// Set a property of a clip or line (path: 'volume', 'style.size'); null clears it.
+export function set(doc, ref, path, value) {
+  const keys = path.split('.'), last = keys.pop();
+  let o = get(doc, ref);
+  for (const k of keys) o = o[k] ??= {};
+  if (value == null) delete o[last]; else o[last] = value;
+}
+
+// A caption line's new text: its word times stay when the word count does (a typo fixed), else they spread over the
+// same stretch by word length.
+export function lineText(doc, ref, text) {
+  const l = get(doc, ref), ws = text.trim().split(/\s+/).filter(Boolean), old = (l.words || []).filter((w) => w[1] != null);
+  l.text = ws.join(' ');
+  if (!old.length) return void delete l.words;
+  if (ws.length === l.words.length) return void (l.words = l.words.map(([, ...rest], i) => [ws[i], ...rest]));
+  const from = old[0][1], span = old.at(-1)[2] - from, total = ws.reduce((n, w) => n + w.length, 0);
+  let t = from;
+  l.words = ws.map((w) => [w, r3(t), r3(t += (span * w.length) / total)]);
+}
+
+// A text clip at t (3 s, inside the edit, which ends at `until`), styled and placed like the text nearest in time, on
+// that text's track when it is free then (else a new top track). → its ref.
+export function addText(doc, t, until) {
+  t = Math.max(0, Math.min(t, until - 3));
+  const texts = (doc.tracks ||= []).flatMap((tr, ti) => (tr.clips || []).filter((c) => clipType(c) === 'text').map((c) => ({ c, ti })));
+  const near = texts.sort((a, b) => Math.abs((a.c.at ?? 0) - t) - Math.abs((b.c.at ?? 0) - t))[0];
+  if (!near) doc.tracks.unshift({ name: 'Text', clips: [] });
+  const like = near ? structuredClone(Object.fromEntries(['style', 'x', 'y', 'enter', 'exit'].filter((k) => near.c[k] != null && !Array.isArray(near.c[k])).map((k) => [k, near.c[k]]))) : {};
+  const ti = near?.ti ?? 0, clips = doc.tracks[ti].clips ||= [];
+  clips.push({ type: 'text', text: 'Text', at: r3(t), end: r3(Math.min(t + 3, until)), ...like });
+  const ref = [ti, clips.length - 1];
+  return clear(doc, [clips.at(-1)], 0) ? toTrack(doc, ref, '') : ref;
+}
+
+// Mute or unmute a track by name; unmuting also unmutes its clips, all but freeze frames (rate under 0.1). → whether
+// the document has that track.
+export function muteTrack(doc, name, mute) {
+  const tr = (doc.tracks || []).find((x, i) => (x.name || `Track ${i + 1}`) === name);
+  if (!tr) return false;
+  if (mute) tr.mute = true;
+  else { delete tr.mute; for (const c of tr.clips || []) if (c.mute && !((c.rate ?? 1) < 0.1)) delete c.mute; }
+  return true;
+}

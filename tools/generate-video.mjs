@@ -7,8 +7,8 @@ import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { die, ffprobeJson, mimeOf, parseArgs, usage } from './lib/catalog.mjs';
 import {
-  brandRel, envHelp, errorText, gatewayClient, kieJob, kieUpload, kieUploadAll, kieUrls, logGatewayWarnings, pickModel, presignRef, runHelp, runOpts,
-  runProviders, saveResults, times, userError, workspaceKeys, writeSidecars,
+  blocked, brandRel, envHelp, errorText, gatewayClient, kieJob, kieUpload, kieUrls, logGatewayWarnings, pickModel, presignRef, runHelp, runOpts,
+  runProviders, saveResults, sunraJob, sunraUpload, times, uploadAll, userError, workspaceKeys, writeSidecars,
 } from './lib/providers.mjs';
 
 const HELP = `generate-video.mjs — video ad generator (kie.ai)
@@ -23,7 +23,7 @@ Required:
   --out <path>             Output video path
 
 Model:
-  --model <name>           minimax-h3 (default) | gemini-omni-1.1-flash (its fallback) | seedance-2.5
+  --model <name>           minimax-h3 (default) | gemini-omni-1.2-flash (its fallback) | seedance-2.5
                            (omni's fallback). Every model adds its own sound; only seedance-2.5 can
                            turn it off (--no-audio)
 
@@ -37,18 +37,17 @@ Inputs (local files or http(s) URLs). A clip takes frames OR references, never b
   minimax-h3:   9 images (256-5760 px, ratio 0.4-2.5, 30 MB), 3 videos (mp4/mov, 2-15 s each, 15 s
                 total, 50 MB; billed as extra seconds), 3 audios (wav/mp3, 2-15 s, 15 s total, free).
                 The first 5 images are free, then 4 credits each
-  omni:         7 slots: an image takes 1, the one --video takes 2 (max 100 MB / 30 s; the model
-                reads a 10 s window from --video-start, and the clip length follows it). No --audio
+  omni:         6 images (20 MB) and 1 video, 7 slots: an image takes 1, the video 2. A --video is
+                edited (mp4, max 15 s; 10 s on sunra), and the clip length follows it. No --audio
   seedance-2.5: 30 images (300-6000 px, ratio 0.4-2.5, 30 MB), 10 videos (mp4/mov/mkv, 480p/720p,
                 2-30 s, 30 s total, 200 MB; billed per input second too), 10 audios (wav/mp3/aac/ogg,
                 2-30 s, 30 s total)
-  --video-start <s>        omni: where its 10 s window starts (default 0)
 
 Optional:
   --resolution <res>       minimax-h3: 768p (default) | 2k
                            omni: 720p (default; same price as 360p) | 360p | 1080p | 4k
                            seedance-2.5: 480p (default) | 720p | 1080p
-  --duration <seconds>     5 (default; 4 on omni). minimax-h3: 4-15. omni: 4 | 6 | 8 | 10.
+  --duration <seconds>     5 (default). minimax-h3: 4-15. omni: 3-15 (3-10 with both frames).
                            seedance-2.5: 4-30, or auto (the model picks)
   --aspect <ratio>         minimax-h3: 21:9 16:9 4:3 1:1 3:4 9:16 (default 9:16), or adaptive with
                              references (their default); frames set the shape (no --aspect)
@@ -58,7 +57,7 @@ Optional:
   --upgrade <clip>         seedance-2.5: remake a 480p take at 1080p as the same take (same motion,
                            timing and voice), within 7 days of it, at the 1080p rate. --out defaults
                            to <clip>-1080p.mp4
-${runHelp(600, { gateway: ' (seedance-2.5 only)' })}
+${runHelp(600, { providers: 'sunra: every model. Gateway: seedance-2.5' })}
 
 ${envHelp()}`;
 
@@ -69,7 +68,7 @@ const LIMITS = {
     res: { '768p': '768P', '2k': '2K' }, durations: range(4, 15), aspects: ['21:9', '16:9', '4:3', '1:1', '3:4', '9:16'],
     images: 9, videos: 3, audios: 3, lastAlone: true,
   },
-  'gemini-omni-1.1-flash': { res: { '720p': '720p', '360p': '360p', '1080p': '1080p', '4k': '4k' }, durations: [4, 6, 8, 10], aspects: ['9:16', '16:9'], images: 7, videos: 1, audios: 0 },
+  'gemini-omni-1.2-flash': { res: { '720p': '720p', '360p': '360p', '1080p': '1080p', '4k': '4k' }, durations: range(3, 15), aspects: ['9:16', '16:9'], images: 6, videos: 1, audios: 0 },
   'seedance-2.5': {
     res: { '480p': '480p', '720p': '720p', '1080p': '1080p' }, durations: range(4, 30), aspects: ['1:1', '4:3', '3:4', '16:9', '9:16', '21:9', 'adaptive'],
     images: 30, videos: 10, audios: 10, audioSwitch: true,
@@ -94,14 +93,14 @@ function minimaxInput(base, o) {
   return [`${base}/text-to-video`, { ...input, aspect_ratio: o.aspect }];
 }
 
-// Duration is a string, ignored when a video is given.
+// No duration with a video: the clip follows it.
 function omniInput(base, o) {
-  const input = { prompt: o.prompt, duration: String(o.duration), resolution: o.res };
-  if (o.aspect) input.aspect_ratio = o.aspect;
+  const input = { prompt: o.prompt, resolution: o.res, aspect_ratio: o.aspect };
+  if (!o.videoUrls.length) input.duration = o.duration;
   if (o.firstFrameUrl) input.first_frame_url = o.firstFrameUrl;
   if (o.lastFrameUrl) input.last_frame_url = o.lastFrameUrl;
   if (o.imageUrls.length) input.image_urls = o.imageUrls;
-  if (o.videoUrls.length) input.video_list = [{ url: o.videoUrls[0], ...o.videoWindow }];
+  if (o.videoUrls.length) input.video_list = o.videoUrls;
   return [base, input];
 }
 
@@ -116,19 +115,43 @@ function seedanceInput(base, o) {
   if (o.res === '480p') input.draft = true; // same price and look as a normal 480p take; keeps --upgrade open
   return [base, input];
 }
-const INPUT = { 'minimax-h3': minimaxInput, 'gemini-omni-1.1-flash': omniInput, 'seedance-2.5': seedanceInput };
+const INPUT = { 'minimax-h3': minimaxInput, 'gemini-omni-1.2-flash': omniInput, 'seedance-2.5': seedanceInput };
+
+// [operation, input] on sunra (each model's API tab on sunra.ai); omni edits a --video. o as above.
+function sunraInput(shape, o) {
+  const lists = { reference_images: o.imageUrls, reference_videos: o.videoUrls, reference_audios: o.audioUrls };
+  const op = o.videoUrls.length && shape === 'gemini-omni-1.2-flash' ? 'video-to-video'
+    : o.refs ? 'reference-to-video' : o.firstFrameUrl || o.lastFrameUrl ? 'image-to-video' : 'text-to-video';
+  if (shape === 'gemini-omni-1.2-flash') {
+    const images = o.imageUrls.length ? { image_urls: o.imageUrls } : {};
+    if (op === 'video-to-video') return [op, { prompt: o.prompt, video: o.videoUrls[0], ...images }];
+    return [op, { prompt: o.prompt, duration: o.duration, resolution: o.res, aspect_ratio: o.aspect, image: o.firstFrameUrl, last_image: o.lastFrameUrl, ...images }];
+  }
+  const input = {
+    prompt: o.prompt, duration: o.duration, resolution: o.res, start_image: o.firstFrameUrl, end_image: o.lastFrameUrl,
+    ...Object.fromEntries(Object.entries(lists).filter(([, v]) => v.length)),
+  };
+  if (op !== 'image-to-video' && o.aspect) input[shape === 'seedance-2.5' ? 'ratio' : 'aspect_ratio'] = o.aspect;
+  if (shape === 'seedance-2.5') Object.assign(input, { generate_audio: o.audio }, o.res === '480p' ? { draft: true } : {}); // as on kie
+  return [op, input];
+}
 
 // The 1080p version of a Seedance 480p take, from the draft task in its sidecar.
 async function upgrade(args) {
   const clip = String(args.upgrade);
   const side = clip.replace(/\.[^./]+$/, '') + '.gen.json';
   const gen = existsSync(side) ? JSON.parse(await readFile(side, 'utf8')) : {};
-  if (!gen.draftTask) die(`${clip} has no Seedance draft to upgrade (only 480p seedance-2.5 takes made on kie have one): make a fresh 1080p take instead.`);
+  if (!gen.draftTask) die(`${clip} has no Seedance draft to upgrade (only 480p seedance-2.5 takes made on kie or sunra have one): make a fresh 1080p take instead.`);
   if (Date.now() - Date.parse(gen.at) > 7 * 864e5) die(`${clip}'s draft is over 7 days old: make a fresh 1080p take instead.`);
   const out = String(args.out || clip.replace(/(\.[^./]+)?$/, '-1080p.mp4'));
-  workspaceKeys(out);
+  const { W, keys } = workspaceKeys(out);
   const entry = pickModel({ model: gen.model }, 'video', 'seedance-2.5');
-  const results = await kieJob(`${entry.kie}-draft`, { draft_task_id: gen.draftTask, resolution: '1080p', output_format: 'mp4' }, runOpts(args, 600).timeout);
+  const { timeout } = runOpts(args, 600);
+  // A draft upgrades only on the provider that made it.
+  if (gen.provider === 'sunra' && !keys.sunra) die(`${clip} was made on sunra: add ${W}_SUNRA_API_KEY to .env to upgrade it.`);
+  const results = gen.provider === 'sunra'
+    ? [(await sunraJob(`${entry.sunra}/draft-to-video`, { draft_task_id: gen.draftTask, output_format: 'mp4' }, timeout)).video.url]
+    : await kieJob(`${entry.kie}-draft`, { draft_task_id: gen.draftTask, resolution: '1080p', output_format: 'mp4' }, timeout);
   const saved = await saveResults(results, out, { fallbackExt: 'mp4' });
   await writeSidecars(saved, { ...gen, params: { ...gen.params, resolution: '1080p' }, each: [{ upgradedFrom: brandRel(clip) }] });
 }
@@ -157,15 +180,14 @@ async function main() {
 
   const resolution = String(args.resolution || Object.keys(L.res)[0]).toLowerCase();
   if (!L.res[resolution]) die(`${shape} renders at ${Object.keys(L.res).join(' | ')}, not ${resolution}.`);
-  const durArg = String(args.duration || (shape === 'gemini-omni-1.1-flash' ? 4 : 5));
+  const durArg = String(args.duration || 5);
   const duration = durArg === 'auto' && shape === 'seedance-2.5' ? -1 : Number(durArg);
-  if (duration !== -1 && !L.durations.includes(duration))
-    die(`${shape} takes --duration ${shape === 'gemini-omni-1.1-flash' ? L.durations.join(' | ') : `${L.durations[0]}-${L.durations.at(-1)}`}, not ${durArg}.`);
+  if (duration !== -1 && !L.durations.includes(duration)) die(`${shape} takes --duration ${L.durations[0]}-${L.durations.at(-1)}, not ${durArg}.`);
   let aspect = args.aspect ? String(args.aspect).replace('x', ':') : undefined;
   if (aspect && !L.aspects.includes(aspect) && !(shape === 'minimax-h3' && aspect === 'adaptive' && refs))
     die(`${shape} takes --aspect ${L.aspects.join(' ')}${shape === 'minimax-h3' ? ' (adaptive only with references)' : ''}, not ${aspect}.`);
   if (shape === 'minimax-h3' && frames && aspect) die('minimax-h3 takes no --aspect with frames: the frame sets the shape.');
-  if (!aspect && ((shape === 'minimax-h3' && !frames && !refs) || shape === 'gemini-omni-1.1-flash')) aspect = '9:16'; // omni would crop a frame to its 16:9 default
+  if (!aspect && ((shape === 'minimax-h3' && !frames && !refs) || shape === 'gemini-omni-1.2-flash')) aspect = '9:16'; // omni would crop a frame to its 16:9 default
 
   if (frames && refs) die('A clip takes --first-frame/--last-frame OR --image/--video/--audio references, not both.');
   if (lastFrame && !firstFrame && !L.lastAlone) die(`${shape} takes --last-frame only together with --first-frame.`);
@@ -173,27 +195,26 @@ async function main() {
   if (args.video.length > L.videos) die(`${shape} takes at most ${L.videos} --video reference${L.videos === 1 ? '' : 's'}.`);
   if (args.audio.length > L.audios) die(`${shape} takes ${L.audios ? `at most ${L.audios}` : 'no'} --audio references.`);
   if (args.audio.length && !args.image.length && !args.video.length) die('--audio references need an --image or --video reference too.');
-  if (shape === 'gemini-omni-1.1-flash' && args.image.length + 2 * args.video.length > 7) die('omni has 7 slots: each --image takes 1, the --video takes 2.');
+  if (shape === 'gemini-omni-1.2-flash' && args.image.length + 2 * args.video.length > 7) die('omni has 7 slots: each --image takes 1, the --video takes 2.');
+  if (shape === 'gemini-omni-1.2-flash' && firstFrame && lastFrame && duration > 10) die('omni takes --duration 3-10 with both frames.');
   if (args['no-audio'] && !L.audioSwitch) die(`${shape} always adds sound (no switch in kie's docs): mute it in the edit, or ask the user about seedance-2.5 --no-audio.`);
   const audio = !args['no-audio'];
 
-  let videoWindow;
-  if (shape === 'gemini-omni-1.1-flash' && args.video.length) {
-    const start = Number(args['video-start'] || 0);
-    const len = Number(ffprobeJson(args.video[0]).format?.duration);
-    if (!len) die(`Could not read the length of ${args.video[0]}.`);
-    if (len > 30 || start >= len) die(`omni takes a video of at most 30 s with --video-start inside it (${args.video[0]} is ${len.toFixed(1)} s).`);
-    videoWindow = { start, ends: Math.min(len, start + 10) };
+  let videoLen = 0;
+  if (shape === 'gemini-omni-1.2-flash' && args.video.length) {
+    videoLen = Number(ffprobeJson(args.video[0]).format?.duration);
+    if (!videoLen) die(`Could not read the length of ${args.video[0]}.`);
+    if (videoLen > 15.5) die(`omni edits a video of at most 15 s (${args.video[0]} is ${videoLen.toFixed(1)} s).`);
   }
 
   const { num, timeout } = runOpts(args, 600);
-  const base = { prompt, aspect, duration, audio, videoWindow };
+  const base = { prompt, aspect, duration, audio, refs, res: L.res[resolution] };
   let each = []; // per saved file: its draft task, for --upgrade
 
   async function runKie() {
     const o = {
-      ...base, res: L.res[resolution],
-      imageUrls: await kieUploadAll(args.image), videoUrls: await kieUploadAll(args.video), audioUrls: await kieUploadAll(args.audio),
+      ...base,
+      imageUrls: await uploadAll(args.image), videoUrls: await uploadAll(args.video), audioUrls: await uploadAll(args.audio),
       firstFrameUrl: firstFrame && await kieUpload(firstFrame), lastFrameUrl: lastFrame && await kieUpload(lastFrame),
     };
     const [model, input] = INPUT[shape](entry.kie, o);
@@ -202,6 +223,21 @@ async function main() {
     }));
     if (input.draft) each = takes.map((t) => ({ draftTask: t.taskId }));
     return takes.map((t) => t.url);
+  }
+
+  async function runSunra() {
+    if (shape === 'minimax-h3' && prompt.length > 2000) throw blocked('minimax-h3 on sunra takes prompts up to 2,000 characters.');
+    if (shape === 'seedance-2.5' && frames && args.aspect) throw blocked('seedance-2.5 on sunra takes no --aspect with frames: the frame sets the shape.');
+    if (videoLen > 10.5) throw blocked('omni on sunra edits a video of at most 10 s.');
+    const host = (list) => uploadAll(list, sunraUpload);
+    const o = {
+      ...base, imageUrls: await host(args.image), videoUrls: await host(args.video), audioUrls: await host(args.audio),
+      firstFrameUrl: firstFrame && await sunraUpload(firstFrame), lastFrameUrl: lastFrame && await sunraUpload(lastFrame),
+    };
+    const [op, input] = sunraInput(shape, o);
+    const takes = await times(num, () => sunraJob(`${entry.sunra}/${op}`, input, timeout));
+    if (input.draft) each = takes.map((t) => ({ draftTask: t.draft_task_id }));
+    return takes.map((t) => t.video.url);
   }
 
   // Seedance 2.5 only; the Gateway takes refs as URLs.
@@ -235,7 +271,7 @@ async function main() {
     });
   }
 
-  const { results, provider } = await runProviders({ entry, provider: args.provider, ws: W, kie: runKie, gateway: runGateway });
+  const { results, provider } = await runProviders({ entry, provider: args.provider, ws: W, kie: runKie, sunra: runSunra, gateway: runGateway });
   const saved = await saveResults(results, args.out, { fallbackExt: 'mp4' });
   const refList = [['first-frame', firstFrame], ['last-frame', lastFrame], ...['image', 'video', 'audio'].flatMap((k) => args[k].map((p) => [k, p]))];
   await writeSidecars(saved, {

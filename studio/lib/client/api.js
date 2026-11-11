@@ -5,6 +5,9 @@ export const brandUrl = (ws, brand, tab) => `/${encodeURIComponent(ws)}/${encode
 // ad = its outputs/ folder name.
 export const workflowUrl = (ws, brand, ad) => `${brandUrl(ws, brand, 'workflow')}/${encodeURIComponent(ad)}`;
 
+// p = a page's path under inputs/, without .md (lib/server/pages.js).
+export const pageUrl = (ws, brand, p) => `${brandUrl(ws, brand, 'pages')}/${p.split('/').map(encodeURIComponent).join('/')}`;
+
 export const apiBase = (ws, brand) => `/api/${encodeURIComponent(ws)}/${encodeURIComponent(brand)}`;
 
 // v = cache-buster for overwritten renders; w = serve an image fit within w px (a thumbnail).
@@ -46,5 +49,6 @@ export const postJson = (url, body) =>
 // mode: 'open' (default app) or 'reveal' (file manager).
 export const openFile = (ws, brand, p, mode) => postJson(`${apiBase(ws, brand)}/open`, { path: p, mode });
 
-// An ad's edit route: the returned function posts { ad, ...body } (the actions: app/api/[ws]/[brand]/edit/route.js).
-export const editApi = (ws, brand, ad) => (body) => postJson(`${apiBase(ws, brand)}/edit`, { ad, ...body });
+// An ad's edit route, or with no ad the brand's pages': the returned function posts { ad, ...body } (the actions:
+// app/api/[ws]/[brand]/edit/route.js).
+export const editApi = (ws, brand, ad) => (body) => postJson(`${apiBase(ws, brand)}/edit`, { ...(ad ? { ad } : { inputs: true }), ...body });

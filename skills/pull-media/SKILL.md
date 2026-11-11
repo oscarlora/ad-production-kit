@@ -1,6 +1,6 @@
 ---
 name: pull-media
-description: Fetch a brand's media into a local cache for cataloging — from a Google Drive folder, a local folder/upload, an Air.inc board, or a URL (direct file or a YouTube/social link). The first step of catalog-media; also usable on its own to gather reference assets. Never fabricate — only pull what the source serves.
+description: Fetch a brand's media into a local cache for cataloging — from a Google Drive folder, a local folder/upload, an Air.inc board, a Frame.io share, or a URL (direct file or a YouTube/social link). The first step of catalog-media; also usable on its own to gather reference assets. Never fabricate — only pull what the source serves.
 ---
 
 # Pull media
@@ -13,8 +13,10 @@ Fetch media into a local cache for **catalog-media**. Sources:
   "anyone with the link" (Google Docs/Vids skipped). With `--brand`, a folder pull downloads only
   files new or changed since the last one (the brand's `drive-sources.json`).
 - **Air.inc** — a board share link (`app.air.inc/a/<id>`, or `…/b/<board>`), no key; sub-boards included.
+- **Frame.io** — a share link (`f.io/<code>` or `next.frame.io/share/<id>`), no key; folders included (files named by
+  their folder path), every version of a version stack. The share needs downloads on.
 - **URL** — a direct media file, or a YouTube/social link via `yt-dlp`.
-- **New service** (Dropbox, WeTransfer, Frame.io…) — the first time one is used, wire it: open the
+- **New service** (Dropbox, WeTransfer…) — the first time one is used, wire it: open the
   link in the in-app browser, find in its network requests how it lists files and serves originals,
   and add a `pull<Service>` to `tools/pull-media.mjs` on `pullAir`'s pattern (no key for a public
   share link, originals not previews, subfolders, `--dry-run`), route its links, add it to this list,

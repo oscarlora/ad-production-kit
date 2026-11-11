@@ -178,4 +178,4 @@ Record, index and R2 push: AGENTS.md (a final cut rendered here: **edit-video**,
 ## Naming
 
 Format `Podcast` in **write-prompt**'s naming convention, e.g.
-`7_V1_Kitchen-Table-Talk_Podcast_Busy-Parent_Reframe_Acme`.
+`7_V1_Kitchen-Table-Talk_Podcast_Busy-Parent_Unaware_Reframe_Acme`.

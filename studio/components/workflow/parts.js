@@ -1,7 +1,7 @@
 'use client';
 import { useEffect, useRef, useState } from 'react';
 import { fileUrl } from '../../lib/client/api.js';
-import { IcArchive, IcCheck, IcPen, IcPlay, IcX } from '../icons.js';
+import { IcArchive, IcCheck, IcPanelClose, IcPen, IcPlay, IcX } from '../icons.js';
 
 // A brand file's text, refetched when its version changes; null until it arrives.
 export function useFileText(ws, brand, p, v) {
@@ -77,8 +77,9 @@ export const Messages = ({ msgs, action }) => msgs.map((m, i) => (
 // The comments on a video or a brief: open ones (ready to review first), or with the archive button the approved ones
 // (newest first). lead(n) shows what a comment is on (its number and moment, or the text it quotes); onReview (optional)
 // plays a done one's change; lit (an id, or a list) highlights the comments pointed at elsewhere and scrolls to the
-// first, onLit(id | null) tells which one the pointer is on; footer goes under the list (the add-a-comment field).
-export function Comments({ comments, focus, lit, onLit, onPick, onReview, onAction, lead, hint, footer }) {
+// first, onLit(id | null) tells which one the pointer is on; footer goes under the list (the add-a-comment field);
+// onHide (optional) adds a button that hides the list.
+export function Comments({ comments, focus, lit, onLit, onPick, onReview, onAction, lead, hint, footer, onHide }) {
   const [showArchived, setShowArchived] = useState(false);
   const archived = comments.filter((n) => n.status === 'approved').reverse();
   const open = openComments(comments);
@@ -100,6 +101,7 @@ export function Comments({ comments, focus, lit, onLit, onPick, onReview, onActi
           type="button" className="ed__history" aria-pressed={showArchived} onClick={() => setShowArchived(!showArchived)}
           title="Archived comments" aria-label="Show archived comments"
         ><IcArchive /></button>
+        {onHide && <button type="button" className="ed__history" onClick={onHide} title="Hide comments" aria-label="Hide comments"><IcPanelClose /></button>}
       </div>
       {!list.length && (showArchived || hint) && <p className="flow-note">{showArchived ? 'Approved comments land here.' : hint}</p>}
       {list.length > 0 && (

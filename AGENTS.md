@@ -59,7 +59,7 @@ workspace's R2 bucket when it has one (see Operating principles).
       _custom/           # the workspace's own skills and tools (extensions or changes to ADPK); load them when working it
       <Brand>/
         inputs/          # research-brand's files: brand.md, products/<product>.md (+ -personas, -angles), customers.md,
-                         # competitors.md, ads.md, DESIGN.md, products.json · memory.md, uploads.json, brief-templates.md
+                         # competitors.md, ads.md, formats.md, DESIGN.md, products.json · memory.md, uploads.json, brief-templates.md
           sources/       # what research collected: reviews.csv, pages/, ads/, posts.md, competitors/, files/
           media/         # the searchable media library (catalog-media)
         outputs/         # one folder per ad (naming: write-prompt) · json/ records (tools/record-ad.mjs) · index.md · batches/
@@ -68,18 +68,20 @@ workspace's R2 bucket when it has one (see Operating principles).
 
     skills/   # one folder per skill: skills/<name>/SKILL.md
     tools/    # scripts; each documents its usage (--help)
-    studio/   # the local web app: Board · Media · Swipe · Workflow (node studio/dev.mjs), and /chat: you, run by the Agent SDK
+    studio/   # the local web app: Board · Media · Swipe · Workflow · Pages (node studio/dev.mjs), and /chat: you, run by the Agent SDK
     desktop/  # the Mac app: Studio and the chat side by side (Studio's /app page)
+    share/    # review links' page and server, a Cloudflare Worker on the workspace's bucket (tools/share-ads.mjs)
     .env      # per-workspace keys (<WS>_…; see .env.example). Other than the kie key at setup, the user
               # pastes keys into the file, not chat. Read keys from disk only and never echo them.
 
 ## Skills
 
 To make an ad: settle the ad type (ask if it isn't given), give the ad its ID and folder
-(`<ID>_New_<Format>` until the concept is picked; naming: **write-prompt**) and its record, title the
+(`<ID>_<Creator>_New_<Format>` until the concept is picked; naming: **write-prompt**) and its record, title the
 session right then (`<brand initials> ad <ID> – <concept> (<format>)`, e.g. `AC ad 11 – Up to 40% off
 (static)`; `New` until the concept is picked, then retitle; a session that makes more than one ad keeps
-every ID, `AC ad 11 + 12 – …`), start its .md with a **CONCEPT** section, and open Studio on its
+every ID, `AC ad 11 + 12 – …`), start its .md with a **CONCEPT** section (its fields and their reasons: **open-studio**; any reference image saved to `refs/` and
+embedded under Format), and open Studio on its
 Workflow page without asking (**open-studio**; the user watches each step land there and edits there).
 Then reply with the plan: the steps in order, what you'll ask them, and that they can watch it in Studio. Then follow its workflow:
 
@@ -121,8 +123,10 @@ Steps (each owns its procedure and rules):
   `tools/lib/providers.mjs` (defaults and fallbacks there); switch to a fallback, or pass
   `--unlisted-model`, only on the user's yes after telling them. Music and SFX run on Suno. Media
   analysis runs on Gemini 3.6 Flash (`tools/lib/analyze.mjs`); search vectors (`tools/lib/embed.mjs`)
-  and caption word timings (Whisper) run on this computer. A workspace with `<WS>_AI_GATEWAY_API_KEY`
-  quietly falls back to the Vercel AI Gateway when kie fails; never suggest it.
+  and caption word timings (Whisper) run on this computer. Everything falls back, when kie rejects a
+  request before generating, to sunra.ai (`<WS>_SUNRA_API_KEY`; the same models, but ElevenLabs for
+  SFX), then the Vercel AI Gateway (`<WS>_AI_GATEWAY_API_KEY`; never suggest it); `--provider` forces
+  one.
 - **Video: render at the tool's default tier, never upscale.** MiniMax H3 (768p) and Gemini Omni
   (720p) takes are final. Seedance drafts at 480p; after approval, and only when the user asks,
   make the 1080p version of that same take (`generate-video.mjs --upgrade <clip>`, within 7 days),
@@ -144,8 +148,9 @@ Steps (each owns its procedure and rules):
   block local workspace and brand names and the terms in `_custom/private-terms.txt`, in files and
   commit messages.
 - **Use what the user supplies** (clips, images, references) as given; never set one aside as too graphic or
-  off-brand on your own judgment.
-- **Approved generations go into the media library** (**catalog-media**, `--generated`). Never unapproved takes, intermediates or trimmed copies: analysis costs money per file.
+  off-brand on your own judgment. A reference they give for an ad goes in its `refs/` and into the Swipe
+  (`node tools/catalog-media.mjs --brand <brand dir> --source <file or link> --swipe`).
+- **Approved generated material goes into the media library** (**catalog-media**, `--generated`): clips, stills and sounds to build ads from. Never finished ads (they live in `outputs/` and the Board), unapproved takes, intermediates or trimmed copies: analysis costs money per file.
 - **Speed:** only when the user asks how to get changes faster, suggest leaving all their comments and
   asking for one batch, and, in Claude Code, fast mode (`/fast`).
 - **Sub-agents only for long work** — a large ingestion, a batch, a long video revision — never for

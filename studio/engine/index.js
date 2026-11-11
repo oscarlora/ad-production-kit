@@ -62,6 +62,7 @@ export async function createEngine({ canvas, url, light = false, onOpen }) {
         frames.set(c.id, c.type === 'image' ? await media.image(c.src) : await media.frame(c.id, c.src, ts));
       }
       waiting = wait;
+      if (light) env.boxes = [];
       drawFrame(ctx, doc, t, frames, env);
       await media.sweep();
     });
@@ -86,6 +87,7 @@ export async function createEngine({ canvas, url, light = false, onOpen }) {
     load, render, play, resize,
     get doc() { return doc; },
     get waiting() { return waiting; },
+    get boxes() { return env?.boxes; }, // where the last frame drew each clip (light only; draw.js place)
     errors: media.errors,
     async mix() { await audio(); return limit(await mixdown(doc, sounds, gain)); },
     close: () => { env?.motion.dispose(); return media.close(); },

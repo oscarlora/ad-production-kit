@@ -23,7 +23,8 @@ Optional:
                            replacing Gemini's text
   --workspace <WS>         Workspace whose kie key to use when the input isn't under workspaces/<WS>/
 
-Transcripts: Gemini on kie.ai (<WS>_KIE_API_KEY; optional fallback when kie fails: <WS>_AI_GATEWAY_API_KEY).
+Transcripts: Gemini on kie.ai (<WS>_KIE_API_KEY; optional fallbacks when kie fails: <WS>_SUNRA_API_KEY,
+then <WS>_AI_GATEWAY_API_KEY).
 
 Output: { model, language, text, segments:[{start,end,speaker,text}],
           words?:[{start,end,word,speaker}], words_model?, disagree?:[{at,whisper,gemini}] (words to check) }`;
@@ -55,7 +56,7 @@ async function main() {
     console.error(`transcript from catalog record ${rec.id}`);
     result = rec.transcript;
   } else {
-    if (!keys.kie) { console.error(`SKIP: no kie key — add ${(ws || '<WS>').toUpperCase()}_KIE_API_KEY to .env (or pass --workspace)`); process.exit(3); }
+    if (!keys.kie && !keys.sunra) { console.error(`SKIP: no kie key — add ${(ws || '<WS>').toUpperCase()}_KIE_API_KEY to .env (or pass --workspace)`); process.exit(3); }
     const track = audioTrack(input);
     try {
       if (!track || track.silent) result = { model: ANALYSIS_MODEL, language: '', text: '', segments: [] };

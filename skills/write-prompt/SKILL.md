@@ -12,6 +12,8 @@ Decide everything; never leave a choice to the model (no "water or can").
 
 - **Scene effects wrap around the product, never onto it.** Whenever a render adds lighting or atmosphere near the product, state: *"nothing printed on the product — no text, no graphic, no signature — may be altered, replaced, or redrawn to match the lighting; the product's surface is pixel-identical to its reference, only the light falling on it and the space around it changes."*
 - **Never describe how the product looks**, anywhere in the prompt: no size, shape, proportions, label colors, artwork or typography; describing invites a redraw. Name it, point to the image, add the negative rule: *"The Acme serum bottle. Use the referenced product image(s). Do not regenerate, redraw, or modify the product or its packaging text — place it as-is."* Scene, layout and overlay text are free to describe. For per-flavor positions, name the flavor, never its look.
+- **Use the sharpest packshot there is** (the store's product images often beat the library's crops; catalog it
+  first): a small crop comes back with a blurred or redrawn label.
 - **A product whose label must read goes first in the references and fills about a third of the
   frame height**; small, or listed after the people, it gets its label redrawn. Keep fingers off
   the label. In a stylized world (stop-motion, 3D), the real product photo still sets the label: ask
@@ -20,7 +22,7 @@ Decide everything; never leave a choice to the model (no "water or can").
 - **A product held in a hand needs an in-hand reference.** Add a photo of it held in a hand (**search-media**), cropped to the hand and product (a face in it takes over the character), and tell the model to match that product-to-hand size; the packshot alone gets the scale wrong. What comes out of it (capsules, gummies, powder) gets its own real close-up too, or the model invents it.
 - **Each generation is stateless.** Describe the final image, never an edit of a previous attempt (no "don't do X" caveats about a prior output). Hard requirements (element counts, "natural undistorted proportions", single image) go in the prompt's constraints. To fix an ad, rebuild the whole prompt fresh; never add product-appearance or dimension language to force a fix.
 - **Revisions regenerate — never edit a previous render.** For any revision (ad, frame, clip), fold the change into the prompt that made it (an ad's is in its record) and generate fresh with the original refs. No image-to-image edit pass on a prior render, and don't ask edit-vs-regenerate (image edits stay fine for preparing base photos, or when the user asks). When recasting real footage, the base is always **the original source frame**, with a short prompt naming only the change. To keep a person across shots, add a **face-only crop** (head and hair) from their approved frame and say "use image 2 only for the face and hair, nothing else". Never feed a whole generated frame back as a reference: each pass gets crisper until it reads fake.
-- **References:** the tool hosts local files itself (signed R2 URLs, or kie's file hosting without R2); there is nothing to upload or delete. Pass an existing HTTPS URL directly when the reference isn't a cataloged brand asset.
+- **References:** the tool hosts local files itself (on the provider's file hosting, or signed R2 URLs for the AI Gateway); there is nothing to upload or delete. Pass an existing HTTPS URL directly when the reference isn't a cataloged brand asset.
 
 ## How a model reads a prompt (every generator: image, video, voice)
 
@@ -77,9 +79,9 @@ Default to a realistic, handheld, casually composed iPhone photo, not a styled b
 Every ad gets its own folder in `outputs/`. A render lands in `drafts/`; on approval, move it to
 `final/` and update the path in the record. Other working files (prompts, plans) get their own subfolders.
 
-- **Folder:** `[ID]_[Concept]_[Format]_[Persona]_[Angle]_[Product]`
-- **Approved file:** `[ID]_[Variation]_[Concept]_[Format]_[Persona]_[Angle]_[Product]` — the same
-  name with the variation added. `File name:` is this.
+- **Folder:** `[ID]_[Creator]_[Concept]_[Format]_[Persona]_[Awareness]_[Angle]_[Product]`
+- **Approved file:** `[ID]_[Creator]_[Variation]_[Concept]_[Format]_[Persona]_[Awareness]_[Angle]_[Product]` — the
+  same name with the variation added. `File name:` is this.
 
 - **ID** — next integer. **If the brand reviews on a Notion Ads Board, the board is the ID
   authority**: at the start of a batch, peek with `node tools/upload-to-notion.mjs next-id <WS>
@@ -87,15 +89,20 @@ Every ad gets its own folder in `outputs/`. A render lands in `drafts/`; on appr
   Otherwise take the highest of the brand's `outputs/` leading numbers and its batch plans' slot IDs
   (**plan-batch**), and add 1, after a pull (other sessions' ads land through R2). Never write over an
   existing folder or `outputs/json/<ID>.json`: it's another ad.
-- **Variation** — `V1`, `V2`, … versions of the same concept. Files only, never folders. A new
+- **Creator** — the initials of whoever makes the ad, in capitals (`OL` for Oscar Lora): `.env`'s `ADPK_INITIALS`;
+  when it's missing, ask the user and add that line.
+- **Variation** — `V1`, `V2`, … versions of the same concept, numbered apart in `drafts/` (in the order made)
+  and `final/` (in the order approved, no gaps); a 9:16 Story is its 4:5's name plus `_Story`. Files only, never folders. A new
   concept is a new ad with its own ID.
 - **Concept** — 2–4 words naming the angle's core message (`Greens-Beat-Pills`), not a line lifted
   from the script.
 - **Format** — e.g. `Static`, `UGC`, `Voiceover-Mashup`, `Voiceoverless-Mashup`, `Podcast`, `Animation`, `Slides`, `Motion`, `Song`.
+- **Awareness** — the stage this ad targets (**ideate-personas-angles**): `Unaware`, `Problem-Aware`,
+  `Solution-Aware`, `Product-Aware` or `Most-Aware`.
 - Underscores between parts, hyphens inside a part (`Disappearing-Woman`).
 
-Example: folder `3_Energy-Without-Coffee_UGC_Busy-Parent_Afternoon-Crash_Acme-Greens`, approved file
-`3_V1_Energy-Without-Coffee_UGC_Busy-Parent_Afternoon-Crash_Acme-Greens.mp4` (the render's own
+Example: folder `3_JD_Energy-Without-Coffee_UGC_Busy-Parent_Problem-Aware_Afternoon-Crash_Acme-Greens`, approved file
+`3_JD_V1_Energy-Without-Coffee_UGC_Busy-Parent_Problem-Aware_Afternoon-Crash_Acme-Greens.mp4` (the render's own
 extension: `.png` for an image, `.mp4` for a video). To rename an ad, rename its folder and files and
 update the paths in its edit documents.
 

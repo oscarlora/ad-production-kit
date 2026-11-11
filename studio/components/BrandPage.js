@@ -5,12 +5,13 @@ import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { brandUrl } from '../lib/client/api.js';
 import { words } from '../lib/client/format.js';
-import { IcAds, IcFlow, IcImage, IcSort, IcSwipe } from './icons.js';
+import { useCopied } from '../lib/client/hooks.js';
+import { IcAds, IcFlow, IcImage, IcPages, IcSort, IcSwipe } from './icons.js';
 import Switcher from './Switcher.js';
 
 // URL segment → label; the first is the default.
-export const TABS = { board: 'Board', media: 'Media', swipe: 'Swipe', workflow: 'Workflow' };
-const TAB_ICONS = { board: IcAds, media: IcImage, swipe: IcSwipe, workflow: IcFlow };
+export const TABS = { board: 'Board', media: 'Media', swipe: 'Swipe', workflow: 'Workflow', pages: 'Pages' };
+const TAB_ICONS = { board: IcAds, media: IcImage, swipe: IcSwipe, workflow: IcFlow, pages: IcPages };
 export const tabOr = (t) => (Object.hasOwn(TABS, t || '') ? t : 'board');
 
 // Ad statuses in workflow order (stored values: tools/record-ad.mjs) and their labels.
@@ -33,6 +34,17 @@ export const statusOptions = [['', 'Any status'], ...Object.entries(STATUSES)];
 export const formatOptions = (items) => [['', 'Any format'], ...[...new Set(items.filter(Boolean))].sort().map((f) => [f, words(f)])];
 // Newest (highest ID) first, or oldest.
 export const byId = (sort) => (a, b) => (sort === 'old' ? 1 : -1) * ((a.id || 0) - (b.id || 0));
+
+// A copyable value; the copy button shows on hover.
+export function CopyParam({ label, text, className = '' }) {
+  const [copied, copy] = useCopied();
+  return (
+    <Param label={label} className={`param--copy ${className}`}>
+      <span>{text}</span>
+      <button type="button" className="btn btn--mini" onClick={() => copy(text)}>{copied ? 'Copied' : 'Copy'}</button>
+    </Param>
+  );
+}
 
 // A side panel's label / value row; id ties the label to a field in the value.
 // icon: a muted icon component before the label.

@@ -49,8 +49,10 @@ Everything runs through your agent: say what you want in plain words.
    studio and click on the video to leave comments; the agent applies them while you watch, then exports.
    A creator's footage is first checked against the script. A finished talking-head edit can be recut into shorter ads from the same footage.
 6. **Review and upload:** *"Open the studio"* — the local web app: **Board** (review ads),
-   **Media** (search the library), **Swipe** (ads to replicate), **Workflow** (each ad's progress, its brief to edit live, and its edit). Approved ads are uploaded to
-   Google Drive, Notion, or anywhere you set up (e.g. Dropbox). Anything you or a client want
+   **Media** (search the library), **Swipe** (ads to replicate), **Workflow** (each ad's progress, its brief to edit live, and its edit), **Pages** (the brand's research to read). Approved ads are uploaded to
+   Google Drive, Notion, or anywhere you set up (e.g. Dropbox). *"Share Acme's ads"* gives
+   one review link for the brand: every approved ad, each version and why it was made; they download them and
+   comment on a spot or a moment, and their comments reach the agent like yours. Anything you or a client want
    remembered goes into the brand's memory, so the next ads follow it.
 
 **Working solo:** with cloud storage set up (recommended), your media lives in the cloud and Studio

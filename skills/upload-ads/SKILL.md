@@ -28,7 +28,7 @@ keys. One spec feeds every destination. Omit a field to leave it unset.
 ```json
 {
   "brand": "Acme",
-  "name": "20_Morning-Greens_Static_Busy-Parent+Gym-Goer_Energy+Social-Proof_Greens",
+  "name": "20_Morning-Greens_Static_Busy-Parent+Gym-Goer_Problem-Aware_Energy+Social-Proof_Greens",
   "status": "Pending Client Review",
   "product": "Greens", "media": "Image", "id": "auto",
   "ratio": ["4:5"], "variations": 4,

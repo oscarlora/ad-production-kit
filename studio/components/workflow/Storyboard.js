@@ -16,7 +16,7 @@ const takeLabel = (c) => (c.model === 'orig' ? 'Take A' : /^[a-z]$/i.test(c.mode
 // The newest take leads; a preview (clip + voice + music mix) is never the default.
 const defaultTake = (clips) => clips.find((c) => c.model !== 'preview') || clips[0];
 
-const PROVIDER = { kie: 'kie.ai', gateway: 'AI Gateway' };
+const PROVIDER = { kie: 'kie.ai', sunra: 'sunra.ai', gateway: 'AI Gateway' };
 const span = (ns) => (ns.length > 1 ? `${Math.min(...ns)}–${Math.max(...ns)}` : '');
 
 // [icon, name, value] per non-empty parameter.
@@ -43,13 +43,14 @@ function Peek({ peek }) {
   return <img className="gen__peek" src={peek.src} alt="" style={{ left, top, width: w }} />;
 }
 
-// How a frame or clip was generated (its sidecar); nothing without one.
-function GenInfo({ ws, brand, label, gen, shots }) {
+// How a frame or clip was generated (its sidecar); nothing without one. fold: closed under a Details toggle.
+function GenInfo({ ws, brand, label, gen, shots, fold }) {
   const [peek, setPeek] = useState(null);
   if (!gen) return null;
+  const Box = fold ? 'details' : 'section';
   return (
-    <section className="gen" aria-label={`${label} generation`}>
-      <div className="eyebrow">{label}</div>
+    <Box className={`gen${fold ? ' gen--fold' : ''}`} aria-label={`${label} generation`}>
+      {fold ? <summary className="eyebrow">{label}</summary> : <div className="eyebrow">{label}</div>}
       <table className="gen__table">
         <tbody>
           {genRows(gen, shots).map(([Icon, k, v]) => (
@@ -92,7 +93,7 @@ function GenInfo({ ws, brand, label, gen, shots }) {
         </>
       )}
       <Peek peek={peek} />
-    </section>
+    </Box>
   );
 }
 
@@ -169,22 +170,36 @@ function ShotCard({ ws, brand, shot }) {
   );
 }
 
-// A sheet: its image beside how it was generated. Sheets stack; they are references, not a sequence.
-function SheetCard({ ws, brand, sheet }) {
-  const src = fileUrl(ws, brand, sheet.p, sheet.v);
+// Any generated image a step shows (a draft, a final, a sheet, a look) as a frame's card: its name, the picture at its own
+// ratio (click opens it), the step's actions (children), and how it was made, folded. A file without a sidecar shows
+// its prompt file (promptText) instead.
+export function ImageCard({ ws, brand, name, title, file, gen, promptText, thread, onOpen, children }) {
+  const [ratio, setRatio] = useState(null);
+  const src = fileUrl(ws, brand, file.p, file.v);
   return (
-    <article className="sheet" aria-label={sheet.name}>
-      <a className="sheet__media" href={src} target="_blank" rel="noreferrer"><img src={src} alt={sheet.name} loading="lazy" /></a>
-      <div className="sheet__body">
-        <div className="sheet__name">{sheet.name}</div>
-        <GenInfo ws={ws} brand={brand} label="Sheet" gen={sheet.gen} />
-      </div>
+    <article className="sb-card sb-card--file" aria-label={title || name}>
+      <div className="sb-card__head"><span className="sb-card__name" title={title}>{name}</span></div>
+      <button type="button" className="sb-media sb-media--open" style={ratio ? { aspectRatio: ratio } : undefined} onClick={onOpen} aria-label={`Open ${title || name}`}>
+        <img src={src} alt="" loading="lazy" onLoad={(e) => setRatio(e.target.naturalWidth / e.target.naturalHeight)} />
+      </button>
+      {(children || gen || promptText || thread) && (
+        <div className="sb-card__body">
+          {children && <div className="sb-card__acts">{children}</div>}
+          {thread}
+          <GenInfo ws={ws} brand={brand} label="Details" gen={gen} fold />
+          {!gen && promptText}
+        </div>
+      )}
     </article>
   );
 }
 
 export function Sheets({ ws, brand, sheets }) {
-  return <div className="sheets">{sheets.map((sh) => <SheetCard key={sh.p} ws={ws} brand={brand} sheet={sh} />)}</div>;
+  return (
+    <div className="flow-grid flow-grid--cards">
+      {sheets.map((sh) => <ImageCard key={sh.p} ws={ws} brand={brand} name={sh.name} file={sh} gen={sh.gen} onOpen={() => window.open(fileUrl(ws, brand, sh.p, sh.v), '_blank')} />)}
+    </div>
+  );
 }
 
 export default function Storyboard({ ws, brand, sb }) {

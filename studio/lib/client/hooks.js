@@ -1,6 +1,9 @@
 'use client';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { apiBase, getJson } from './api.js';
+import { columnsFor } from './masonry.js';
+
+export { masonry } from './masonry.js';
 
 // One watch stream per brand for the whole browser: an open stream holds one of the browser's 6 connections to
 // Studio, shared by every tab and pane. The tab holding the brand's lock streams and relays each event to the
@@ -97,6 +100,33 @@ export function useUndo(apply) {
   return record;
 }
 
+// useState remembered in this browser (localStorage, as JSON); read after mount, so the server render matches.
+export function useStored(key, initial) {
+  const [value, setValue] = useState(initial);
+  useEffect(() => { try { const s = localStorage.getItem(key); if (s != null) setValue(JSON.parse(s)); } catch {} }, [key]);
+  const set = useCallback((x) => setValue((cur) => {
+    const next = typeof x === 'function' ? x(cur) : x;
+    try { localStorage.setItem(key, JSON.stringify(next)); } catch {}
+    return next;
+  }), [key]);
+  return [value, set];
+}
+
+// A width dragged on a separator and remembered: [width, dragging, the separator's props]. measure(pointer event) →
+// the new width, clamped by the caller; a double click goes back to initial.
+export function useDragWidth(key, initial, measure) {
+  const [width, setWidth] = useStored(key, initial);
+  const [live, setLive] = useState(null);
+  const props = {
+    role: 'separator', 'aria-orientation': 'vertical',
+    onPointerDown: (e) => { e.preventDefault(); e.currentTarget.setPointerCapture(e.pointerId); setLive(width); }, // no text selection
+    onPointerMove: (e) => { if (live != null) setLive(Math.round(measure(e))); },
+    onPointerUp: () => { if (live != null) setWidth(live); setLive(null); },
+    onDoubleClick: () => setWidth(initial),
+  };
+  return [live ?? width, live != null, props];
+}
+
 // const [copied, copy] = useCopied()
 export function useCopied() {
   const [copied, setCopied] = useState(false);
@@ -104,8 +134,7 @@ export function useCopied() {
   return [copied, copy];
 }
 
-// Masonry columns step down with the screen width: 4 > 3 > 2 > 1.
-const columnsFor = (vw) => (vw < 640 ? 1 : vw < 900 ? 2 : vw < 1200 ? 3 : 4);
+// The masonry's column count for the window's width.
 export function useColumns() {
   const [n, setN] = useState(4);
   useEffect(() => {
@@ -115,16 +144,4 @@ export function useColumns() {
     return () => window.removeEventListener('resize', on);
   }, []);
   return n;
-}
-
-// Deal items into n columns, each to the shortest so far, so the order still reads left to right.
-// heightOf: an item's height per unit of width (1 / its ratio); CSS sizes the cards.
-export function masonry(items, n, heightOf) {
-  const cols = Array.from({ length: n }, () => ({ items: [], h: 0 }));
-  for (const item of items) {
-    const col = cols.reduce((a, b) => (b.h < a.h ? b : a));
-    col.items.push(item);
-    col.h += heightOf(item);
-  }
-  return cols.map((c) => c.items);
 }

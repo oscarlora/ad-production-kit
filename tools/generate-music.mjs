@@ -1,13 +1,15 @@
 #!/usr/bin/env node
-// generate-music.mjs — Suno on kie.ai: an instrumental bed by default, or a song (--vocals, --lyrics).
-// Each task returns two takes; each saved file gets a <stem>.gen.json sidecar. Prompt craft:
-// skills/add-music. Exports runSuno, which generate-sfx.mjs uses for Suno Sounds.
+// generate-music.mjs — Suno on kie.ai (or sunra.ai): an instrumental bed by default, or a song
+// (--vocals, --lyrics). Each kie task returns two takes; each saved file gets a <stem>.gen.json
+// sidecar. Prompt craft: skills/add-music. Exports runSuno, which generate-sfx.mjs uses.
 
 import { readFile, writeFile } from 'node:fs/promises';
 import { basename, extname } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { die, ffprobeJson, have, parseArgs, usage } from './lib/catalog.mjs';
-import { downloadTo, envHelp, errorText, kie, kieJob, runHelp, runOpts, suffixed, times, userError, workspaceKeys, writeSidecars } from './lib/providers.mjs';
+import {
+  blocked, downloadTo, envHelp, errorText, kie, kieJob, runHelp, runOpts, runProviders, suffixed, sunraJob, times, userError, workspaceKeys, writeSidecars,
+} from './lib/providers.mjs';
 
 export const SUNO_MODELS = ['V6', 'V6_MINI', 'V6_WILD'];
 
@@ -32,19 +34,22 @@ Optional:
   --model <name>           V6 (default) | V6_MINI (faster) | V6_WILD (bolder); same price
   --title <text>           Track title (default from --out; max 80 chars)
   --negative-tags "<text>" Styles to avoid
-${runHelp(600, { num: 'Runs (default 1); each gives two takes', gateway: null })}
+${runHelp(600, { num: 'Runs (default 1); each gives two takes', unlisted: false,
+  providers: 'sunra: V6, V6_WILD; no --duration, --negative-tags or word timings. No Gateway' })}
 
 ${envHelp()}`;
 
-// `num` Suno tasks on kie, each polled to the end; saves every take next to `out` (_2, _3 …) and
-// prints "Saved:".
-export async function runSuno(model, input, { num = 1, timeout = 600, out }) {
-  const { W, keys } = workspaceKeys(out);
-  if (!keys.kie) throw userError(`Workspace ${W} has no kie.ai key. Add ${W}_KIE_API_KEY to .env (get one at https://kie.ai/api-key).`);
-  const pick = (d, taskId) => (d.response?.data || []).map((track) => ({ track, taskId }));
-  const takes = await times(num, () => kieJob(model, input, timeout, { pick }));
+// `num` Suno tasks on kie (kie = [model, input]), each polled to the end, or sunra's runner (which
+// returns [{ url }]) on a pre-submit rejection or --provider sunra. Saves every take next to `out`
+// (_2, _3 …) and prints "Saved:". → { takes: [{ file, url, track?, taskId? }], provider }.
+export async function runSuno({ name, kie: [model, input], sunra, provider, num = 1, timeout = 600, out }) {
+  const { W } = workspaceKeys(out);
+  const pick = (d, taskId) => (d.response?.data || []).map((track) => ({ track, taskId, url: track.audio_url || track.stream_audio_url }));
+  const { results: takes, provider: used } = await runProviders({
+    entry: { name, sunra: !!sunra }, provider, ws: W, kie: () => times(num, () => kieJob(model, input, timeout, { pick })), sunra,
+  });
   for (const [i, take] of takes.entries()) {
-    take.file = await downloadTo(take.track.audio_url || take.track.stream_audio_url, suffixed(out, i), { fallbackExt: 'mp3' });
+    take.file = await downloadTo(take.url, suffixed(out, i), { fallbackExt: 'mp3' });
     if (have('ffprobe')) {
       const meta = ffprobeJson(take.file);
       if (!(meta.streams || []).some((s) => s.codec_type === 'audio')) throw userError(`${take.file} has no audio stream`);
@@ -52,8 +57,11 @@ export async function runSuno(model, input, { num = 1, timeout = 600, out }) {
     }
     console.log('Saved: ' + take.file);
   }
-  return takes;
+  return { takes, provider: used };
 }
+
+// A sunra Suno clip's audio URL; its schema leaves clips untyped.
+const clipUrl = (c) => c?.audio_url || c?.url || c?.audio?.url || c?.stream_audio_url;
 
 // Suno's word timings for one take -> <take>.suno-words.json. Live responses nest a second {code,msg,data}
 // envelope inside data (hence res.code, res.data.alignedWords). A failure only warns: the song is saved.
@@ -97,11 +105,24 @@ async function main() {
   if (negativeTags) input.negative_tags = negativeTags;
   console.error(`music     ${lyrics ? 'song from --lyrics' : args.vocals ? 'song with vocals' : 'instrumental bed'}  "${prompt.slice(0, 80)}${prompt.length > 80 ? '…' : ''}"`);
 
-  const takes = await runSuno('ai-music-api/generate', input, { num, timeout, out: args.out });
-  if (lyrics) for (const take of takes) await saveWords(take);
+  // sunra's Suno sets its own length, so a bed's default 30 s is dropped; asking for one blocks it.
+  const sunraModel = { V6: 'suno/suno-v6', V6_WILD: 'suno/suno-v6-wild' }[model];
+  const sunra = sunraModel && (async () => {
+    if (args.duration || negativeTags) throw blocked('Suno on sunra takes no --duration or --negative-tags.');
+    const [op, body] = args.vocals ? ['inspire-mode', { prompt, instrumental: false }]
+      : ['custom-mode', { title, style: prompt, lyrics: lyrics || '', instrumental: !lyrics }];
+    return times(num, async () => (await sunraJob(`${sunraModel}/${op}`, body, timeout)).clips.map((c) => {
+      if (!clipUrl(c)) throw new Error(`sunra's Suno clip has no audio URL: ${JSON.stringify(c).slice(0, 300)}`);
+      return { url: clipUrl(c) };
+    }));
+  });
+
+  const { takes, provider } = await runSuno({ name: `suno-${model}`, kie: ['ai-music-api/generate', input], sunra, provider: args.provider, num, timeout, out: args.out });
+  if (lyrics && provider === 'kie') for (const take of takes) await saveWords(take);
+  else if (lyrics) console.error('WARN: no word timings on sunra (no .suno-words.json).');
   await writeSidecars(takes.map((t) => t.file), {
-    tool: 'generate-music', model: `suno-${model}`, provider: 'kie', prompt: lyrics || prompt,
-    params: { style: lyrics ? prompt : null, vocals: !!(lyrics || args.vocals), duration, 'negative-tags': negativeTags },
+    tool: 'generate-music', model: `suno-${model}`, provider, prompt: lyrics || prompt,
+    params: { style: lyrics ? prompt : null, vocals: !!(lyrics || args.vocals), duration: provider === 'kie' ? duration : null, 'negative-tags': negativeTags },
   });
 }
 

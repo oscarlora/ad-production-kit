@@ -9,7 +9,7 @@ import { repoRoot } from './root.js';
 const TAG = 'studio'; // marks the sessions started here, so the chat list leaves out the user's other Claude Code sessions
 const PAGE = /\s*<studio-page>[^<]*<\/studio-page>\s*$/; // the page the user was on, sent with each message
 
-const APPEND = `You are the agent in ADPK Studio's chat panel. Studio is open beside this chat, so never launch Studio or open a browser: to show the user a page or an ad, call mcp__studio__open_page with its Studio path: /<Workspace>/<Brand>/<board|media|swipe|workflow>, or /<Workspace>/<Brand>/workflow/<ID> for an ad (folder names as they are under workspaces/). Title the session with mcp__studio__set_title. Each user message ends with <studio-page>: the page the user is looking at.`;
+const APPEND = `You are the agent in ADPK Studio's chat panel. Studio is open beside this chat, so never launch Studio or open a browser: to show the user a page or an ad, call mcp__studio__open_page with its Studio path: /<Workspace>/<Brand>/<board|media|swipe|workflow|pages>, /<Workspace>/<Brand>/workflow/<ID> for an ad, or /<Workspace>/<Brand>/pages/<path under inputs/, no .md> for a research page (folder names as they are under workspaces/). Title the session with mcp__studio__set_title. Each user message ends with <studio-page>: the page the user is looking at.`;
 
 // Live chats outlive a page reload and a dev-mode module reload.
 const chats = (globalThis.__adpkChats ||= new Map());

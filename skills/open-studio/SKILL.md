@@ -1,13 +1,13 @@
 ---
 name: open-studio
-description: Launch Ad Production Kit Studio, the local web app for every human-facing view: the ads Board (review grid), the Media library, the Swipe page (ads to replicate), and the Workflow page (each ad's progress, its storyboard, and the video edit's live preview, comments and export). One app for all workspaces and brands. Use when the human wants to review ads or a video edit, browse media or track an ad's progress, or asks to "open the studio / board / gallery / batch UI".
+description: Launch Ad Production Kit Studio, the local web app for every human-facing view: the ads Board (review grid), the Media library, the Swipe page (ads to replicate), the Workflow page (each ad's progress, its storyboard, and the video edit's live preview, comments and export), and Pages (the brand's research, read as pages). One app for all workspaces and brands. Use when the human wants to review ads or a video edit, browse media, track an ad's progress or read the brand's research, or asks to "open the studio / board / gallery / batch UI".
 ---
 
 # Open studio
 
 The human-facing web app (`studio/`). One instance covers every workspace and brand, with a brand
-switcher and URLs `/<Workspace>/<Brand>/board`, `…/media`, `…/swipe` and
-`/<Workspace>/<Brand>/workflow[/<ad folder>]`. Pages **update live** as records and renders land.
+switcher and URLs `/<Workspace>/<Brand>/board`, `…/media`, `…/swipe`,
+`/<Workspace>/<Brand>/workflow[/<ad folder>]` and `/<Workspace>/<Brand>/pages[/<path under inputs/, no .md>]`. Pages **update live** as records and renders land.
 
 ## Launch
 
@@ -36,11 +36,20 @@ beside you: show a page with the `open_page` tool instead of launching anything.
   and transcript, and edits the record's products, people and analysis directly.
 - **Swipe** — the catalog's swipe items (**replicate-ad**), the same view, each marked "To swipe" or
   with the ads made from it.
+- **Pages** — every .md under `inputs/` (`studio/lib/server/pages.js`; not `media/` or `sources/files/`): an index
+  grouped as Research, Products and Sources; opening one keeps them all in a sidebar beside it and edits it in blocks,
+  as a brief is in Workflow (below). Its comments land in `inputs/comments/`: while the user works there, run
+  **edit-video**'s review loop on `inputs` (`comments <brand>/inputs --wait`). To show research, open its page, e.g.
+  `…/pages/products/<product>-angles`.
 - **Workflow** — each ad folder's step bar for its format, inferred from the folder's files and the
   record (`studio/lib/server/workflow.js`). Every ad's bar opens with **Concept**: the
-  **CONCEPT** section of the ad's .md (Product, Persona with the awareness stage this ad targets,
-  Angle, Format, Reference; UGC adds Message and For, animation Style and Cast). Then:
-  - Image: Prompt · Drafts · Final · Meta copy
+  **CONCEPT** section of the ad's .md (Concept: the idea in a line; Product; Persona with the awareness stage this ad
+  targets; Angle; Format; Reference; UGC adds Message and For, animation Style and Cast), each a labeled block
+  (`**Persona:** …`). Persona, Angle and Format are each followed by their reason, `**Why this persona:**`,
+  `**Why this angle:**`, `**Why this format:**`, and when the user gave his own reasoning, `**User's notes:**` holds
+  it in his words, quoted (never yours). The review link (**write-handoff**) shows them beside the ad. Then:
+  - Image: Prompt · Drafts · Final · Meta copy (`meta.md`). Each render's Approve moves it to `final/` as the next V (finals stay
+    V1, V2, … with no gaps) and Unapprove back to `drafts/`, repointing the record (approved while `final/` has one) and the index.
   - Animation: Concept · Script · Voice · Sheets · Frames · Clips · Edit
   - Slides: Concept · Script · Voices · Storyboard · Sheets · Frames · Clips · Edit
   - Motion: Concept · Script · Sounds · Edit
@@ -60,5 +69,5 @@ beside you: show a page with the `open_page` tool instead of launching anything.
   to the ad folder), so put a step's reference reels and stills in its .md that way; a table cell
   holding only `` `path.jpg` `` shows the image. Selecting text, and each finished edit, leaves a comment
   for the agent; changes on disk show live, so re-read a file before editing it. An ad with an edit
-  document opens on its **Edit** step: live preview, timeline, the user's comments (answered by
+  document opens on its **Edit** step: live preview, a timeline the user edits by hand too, their comments (answered by
   **edit-video**'s review loop) and Export.

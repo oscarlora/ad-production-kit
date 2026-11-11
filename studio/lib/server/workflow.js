@@ -1,12 +1,14 @@
 // Workflow data: each ad's progress through its format's steps, inferred from its outputs/ folder and record.
 // Returned paths are brand-relative (POSIX), for the /file route.
 import { readdirSync, readFileSync, statSync } from 'node:fs';
-import { basename, join } from 'node:path';
+import { basename, isAbsolute, join, relative, resolve } from 'node:path';
 import { mediaType } from '../client/api.js';
+import { adRest } from '../client/format.js';
 import { blockKind, inSections, isSeparator, parseDoc, tableCells } from '../markdown.js';
 import { adFolders } from './ads.js';
 import { readJson } from './brands.js';
 import { adDir, docComments, editInfo } from './edit.js';
+import { repoRoot } from './root.js';
 
 const typeOf = (rel) => mediaType(rel) || /\.(md|txt|pdf)$/i.exec(rel)?.[1].toLowerCase() || 'other';
 
@@ -19,10 +21,10 @@ function displayText(v) {
   return String(v);
 }
 
-// `<id>_<Concept>_<Format>_<Persona>_<Angle>_<Product>`; older folders carry fewer parts.
+// `<id>_<initials>_<Concept>_<Format>_…` (naming: write-prompt).
 function parseFolder(folder) {
-  const [id, concept = '', format = '', persona = '', angle = '', ...rest] = folder.split('_');
-  return { folder, id: Number(id), concept, format, persona, angle, product: rest.join('_') };
+  const [concept = '', format = ''] = (adRest(folder) || '').split('_');
+  return { folder, id: parseInt(folder, 10), concept, format };
 }
 
 // Every file under the ad folder (dot-entries skipped), as { rel, p, v, type }.
@@ -49,14 +51,16 @@ const readRecord = (brandDirAbs, id) => readJson(join(brandDirAbs, 'outputs', 'j
 
 const readText = (brandDirAbs, p) => { try { return readFileSync(join(brandDirAbs, p), 'utf8'); } catch { return ''; } };
 
-// Strip a file entry to what the client renders; a same-stem .txt beside an image is its prompt.
-function present(files, all) {
+// Strip a file entry to what the client renders; a same-stem .txt beside an image is its prompt, and with brandDirAbs an
+// image also gets its .gen.json sidecar (the viewer's side panel).
+function present(files, all, brandDirAbs) {
   const byRel = new Map(all.map((f) => [f.rel, f]));
   const prompts = new Set();
   const list = files.map((f) => {
     const txt = f.type === 'image' && byRel.get(f.rel.replace(/\.[^.]+$/, '.txt'));
     if (txt) prompts.add(txt.rel);
-    return { name: f.rel, p: f.p, v: f.v, type: f.type, ...(txt ? { prompt: { p: txt.p, v: txt.v } } : {}) };
+    const gen = brandDirAbs && f.type === 'image' && readGen(brandDirAbs, byRel, f);
+    return { name: f.rel, p: f.p, v: f.v, type: f.type, ...(txt ? { prompt: { p: txt.p, v: txt.v } } : {}), ...(gen ? { gen } : {}) };
   });
   return list.filter((f) => !prompts.has(f.name));
 }
@@ -207,24 +211,39 @@ function footageView(brandDirAbs, brief, files) {
 // { note, md (inline text), fields: [[label, text]], files: [...], view ({ only, pick?, cols? } regex sources: the .md sections to show, the blocks among them, a table's columns by header), storyboard: true, footage: true, editor: true }.
 const ROOT_VIDEO = (f) => !f.rel.includes('/') && f.type === 'video' && !/^reference/i.test(f.rel);
 const ROOT_EXPORT = (f) => ROOT_VIDEO(f) || (!f.rel.includes('/') && f.type === 'audio');
-const ROOT_MD = (f) => !f.rel.includes('/') && f.type === 'md' && !/^analysis\.md$/i.test(f.rel);
+const ROOT_MD = (f) => !f.rel.includes('/') && f.type === 'md' && !/^(analysis|meta)\.md$/i.test(f.rel);
 const under = (dir, ...types) => (f) => f.rel.startsWith(`${dir}/`) && (!types.length || types.includes(f.type));
 const any = (...preds) => (f) => preds.some((p) => p(f));
 const EXPORTED = any(ROOT_VIDEO, under('final', 'video')); // edit-video exports to final/
 // Each step lists the files that evidence it (and optionally record fields); optional steps show only when they have files.
 // A step with a section shows those sections of the newest root .md (the brief); pick narrows them to matching blocks, cols to matching table columns.
 // Every ad's brief opens with its concept section (block format: open-studio).
-const CONCEPT = { key: 'concept', label: 'Concept', section: /^concept/i, pick: /^(\*\*(Product|Persona|Angle|Message|For|Format|Style|Cast|Concept Overview|Reference)(:|\*\*$))/ };
+const CONCEPT = { key: 'concept', label: 'Concept', section: /^concept/i, pick: /^(\*\*(Concept|Product|Persona|Angle|Message|For|Format|Style|Cast|Concept Overview|Reference|Why this \w+|User's notes)(:|\*\*$))/ };
 const SCRIPT_TABLE = { section: /^(lines to camera|voice ?over|hooks|script)/i, pick: /^\|/ };
 // Whether a brief has a step's section (with a block it picks), and the view that shows it.
 const hasSection = (blocks, def) => !!def.section && inSections(blocks, def.section).some((on, i) => on && (!def.pick || def.pick.test(blocks[i].src)));
 const viewOf = (def) => ({ only: def.section.source, pick: def.pick?.source, cols: def.cols?.source });
+// An image ad's Prompt step: the record's prompt, its settings, and its references and current render as brand-relative
+// files (record paths are repo-relative or absolute).
+function promptPanel(g, brandDirAbs) {
+  const file = (path) => {
+    const abs = isAbsolute(path) ? path : resolve(repoRoot(), path);
+    try { return { p: relative(brandDirAbs, abs).split('\\').join('/'), v: Math.round(statSync(abs).mtimeMs), name: basename(abs) }; } catch { return null; }
+  };
+  return {
+    text: displayText(g.prompt),
+    settings: [['Model', g.model], ['Aspect', g.aspect], ['Resolution', g.resolution]].filter(([, v]) => v),
+    refs: (g.refs || []).map(file).filter(Boolean),
+    output: g.output ? file(g.output) : null,
+  };
+}
+
 const FAMILIES = {
   image: [ // make-image-ad
-    { key: 'prompt', label: 'Prompt', fields: (rec) => (rec?.generation?.prompt ? [['prompt', displayText(rec.generation.prompt)]] : []) },
+    { key: 'prompt', label: 'Prompt', panel: (rec, dir) => rec?.generation?.prompt && { prompt: promptPanel(rec.generation, dir) } },
     { key: 'drafts', label: 'Drafts', files: any(under('drafts', 'image'), (f) => !f.rel.includes('/') && f.type === 'image') },
     { key: 'final', label: 'Final', files: under('final', 'image'), done: (rec) => rec?.status === 'approved' },
-    { key: 'meta', label: 'Meta copy', fields: (rec) => Object.entries(rec?.meta || {}).map(([k, v]) => [k, displayText(v)]) },
+    { key: 'meta', label: 'Meta copy', files: (f) => f.rel === 'meta.md', fields: (rec) => Object.entries(rec?.meta || {}).map(([k, v]) => [k, displayText(v)]) },
   ],
   song: [ // make-ai-song
     { key: 'concept', label: 'Concept', files: ROOT_MD },
@@ -295,12 +314,13 @@ function genericSteps(brandDirAbs, family, files, rec) {
     const sec = hasSection(blocks, def);
     const own = [...(sec ? [brief] : []), ...(def.files ? files.filter(def.files) : [])];
     const fields = own.length ? [] : (def.fields?.(rec) || []).filter(([, v]) => v);
+    const extra = def.panel?.(rec, brandDirAbs) || null;
     if (def.optional && !own.length) continue;
     steps.push({
       key: def.key,
       label: def.label,
-      done: !!(own.length || fields.length || def.done?.(rec)),
-      panel: { ...(fields.length ? { fields } : {}), ...(own.length ? { files: present(own, files) } : {}), ...(sec ? { view: viewOf(def) } : {}) },
+      done: !!(own.length || fields.length || extra || def.done?.(rec)),
+      panel: { ...extra, ...(fields.length ? { fields } : {}), ...(own.length ? { files: present(own, files, brandDirAbs) } : {}), ...(sec ? { view: viewOf(def) } : {}) },
     });
   }
   return steps;

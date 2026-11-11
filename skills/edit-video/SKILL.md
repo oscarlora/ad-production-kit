@@ -19,7 +19,7 @@ the ad's **Edit** step: preview, timeline, review comments and an Export button.
    product graphics (**search-media**). The preview loads a file the moment the document names it: finish new media
    (write it under a temp name, then rename it) before pointing the document at it.
 2. **Write the document:** tracks top to bottom (hook and text, captions, video, voice, music, SFX),
-   every time on the timeline clock. Clips trim with `in`, play at `rate` and get `transition`s. A speaker's
+   every time on the timeline clock, one clip at a time per track (what overlaps in time goes on its own track; Studio shows it that way and saves it so on the user's first edit). Clips trim with `in`, play at `rate` and get `transition`s. A speaker's
    take goes in whole: `tighten` finds where its speech starts and ends (a transcript's word ends run early).
    Anything that changes over time (zoom, volume, saturation…) takes keyframes.
 3. **Captions:** `captions --words <transcript or song timing>` writes word-timed lines (**caption-video**).
@@ -29,8 +29,9 @@ the ad's **Edit** step: preview, timeline, review comments and an Export button.
 
 ## Revise: live review
 
-The user can also trim clips and mute or unmute tracks in Studio, which writes straight into the document: change an edit in place from
-then on, never rebuild it from a script over their trims.
+The user also edits by hand in Studio (moves, trims, splits, deletes and duplicates clips, edits text and captions,
+sets volume, speed and position, mutes tracks), which writes straight into the document: re-read it before each
+change, change it in place from then on, and never rebuild it from a script over their edits.
 
 The user leaves comments on the preview (a moment, optionally a box on the frame, or a stretch: `t` to `to`). Work through them as
 they come:
@@ -55,6 +56,8 @@ they come:
 Comments are one file each in `outputs/<ad>/comments/`, in the language the user writes in; reply in it.
 A comment on a brief (.md) or `footage.json` has `file` and `quote` (the text it's about) instead of a
 moment; its `--done` takes no `--span` (and on a brief, a `--reply` only when you changed something).
+One left on a review link (**write-handoff**) also has `by`, who wrote it; on an image it has `file` and
+`box` instead of a moment, and its `--done` takes a `--reply` and no `--span`. The reply shows on the link.
 One from the user's own edit in Studio carries `edit: { where, from, to }` (plus `deleted: true`
 when it deleted rows, a column or blocks; `from` is what went): bring what depends on it in step.
 
@@ -75,20 +78,22 @@ Work in this order, since each step shifts the timing of the ones after it: clip
 `tighten`, speed (UGC speech plays at 1.2×, every time on the timeline rescaled with it), overlays
 and zooms, sound effects. A hook version (`edit-v2.json`…) owns its hook clips: copy V1's opening
 settings into it (the push-out, the whoosh's trim, the hook text's position) and recheck after each
-change to V1's.
+change to V1's. A version spliced from stretches (`recut`, or a line inserted from a raw take) gets its
+zoom keyframes set again per stretch, every keyframed track moved with its clips, and a `frames` sheet
+across each join.
 
 - **Cuts and pacing** — shots on the voiceover's lines (`place`); `cut` removes a stretch (a pause,
   a line) from every track and closes the gap, captions and keyframes included. For a real speaker
   (UGC, talking head), `tighten` takes out every breath, lead-in and pause by waveform, guarded by the
   words; run it once the takes are placed, and again after any retake. Then find the pauses it left (breaths
   it took for speech: `silencedetect` on the `audio` mix, over 0.3 s, at ~24 dB under its speech level, never a
-  fixed level: the mix is loudness-normalized) and `cut` each to ~0.12 s. A soft last sound after a tiny gap (the "ss" of "moodiness") can fall outside a line's end: check each line's tail with a high-pass (~3 kHz) and extend to keep it. To drop a word mid-line, cut from
+  fixed level: the mix is loudness-normalized) and `cut` each to ~0.12 s. A soft last sound (the "ss" of "moodiness", the "n" of "iron") can fall outside a line's end: check every cut's tail, high-passed (~3 kHz) for an s and full band for an n or m, and extend to keep it. To drop a word mid-line, cut from
   the quiet after the word before it to the closed mouth just before the next word's release (10 ms loudness
   steps show both), never inside sounds that run together, and from a take where the word stands apart if
   one has it; keep both sides in the same take, check by ear, and punch in ~1.2× at the cut, since a smaller
   step reads as a jump.
 - **B-roll** — never a flash of the talking head under ~0.7 s between two B-roll shots (extend the
-  B-roll instead), no jump cut inside a B-roll shot under ~0.8 s, and no one in it visibly talking
+  B-roll instead), and a B-roll shot or photo ends exactly on the cut it meets, never a frame early, no jump cut inside a B-roll shot under ~0.8 s, and no one in it visibly talking
   for long (a beat of product in use is fine). Slow a shot down to use only the moment that fits. A take starts on its action, never on the lead-in (an empty frame before she walks in, a blank look, eyes off camera): pick each shot's `in` from a sheet across the whole clip, never a guessed offset, and check its first second on a sheet. A shot
   goes where its action happens in the story (her bag of bottles as she reaches into it). Stock that
   illustrates a line can take the top half (`w` 1080, `h` 960) while the speaker's clip moves down to the
@@ -103,8 +108,13 @@ change to V1's.
   (a move never changes mid-sentence). Alternate type and depth (1.1–1.3) from sentence to sentence:
   still, a hard punch (a set scale from the sentence's first frame), a slow push-in (~1.06–1.1 across
   the sentence; suits a question that builds tension), or a fast hit (in ~0.1 s) on the
-  start of a key *phrase* of 2–5 words, held to the sentence's end. A hit needs about a second before the cut,
-  else it snaps back and reads as a glitch; a zoom-out happens only on a cut, never mid-shot. A
+  start of a key *phrase* of 2–5 words, held to the sentence's end. Pick each move from what the line
+  means (a calm line gets a slow push or none; a shock or a punchline gets the hit), and let moves flow:
+  a slow push carries straight on from a fast hit (a stop, then a start, reads as a bug), never more than
+  one change of move in ~1.5 s, and a line that recurs (the same excuse, the same joke) gets the same move
+  each time. A hit needs about a second before the cut,
+  else it snaps back and reads as a glitch; a zoom-out happens on a cut, or mid-shot only as a fast
+  pull-out on a punchline. A
   phrase that names a motion ("up and down") can take a literal camera move: frame that shot a little
   tighter from its first frame so the move has room without a visible zoom. Keyframe `scale` with an
   `origin` on the subject. None during an
@@ -123,7 +133,7 @@ change to V1's.
   takes exposure, contrast, saturation, temperature, grain, vignette, each keyframable.
 - **Sound** — you choose it: music (**add-music**) and effects (**generate-sfx**); reference a shared
   library file in place (`../../../../Shared/Library/inputs/media/<file>`). An effect earns its place by marking something (a
-  move, a reveal, a list item), never as decoration, and goes when what it marks goes or moves (`check` flags one left
+  move, a reveal, a list item) on a line that is a joke or a hit, never as decoration or on a calm line, and goes when what it marks goes or moves (`check` flags one left
   marking nothing). Time each effect from its peak (**generate-sfx**, Place). The music sits at one
   flat level (**add-music**); `moves` lists where the picture moves, for effects on actions.
   A noisy or mumbled voice: **generate-voice** (`isolate`, `patch`).
@@ -139,11 +149,11 @@ change to V1's.
   higher. Captions stay centered
   in one spot; while the product is held they may shift only up or down, inside the safe zone, and
   overlap it when it can't be cleared. Other on-screen text replaces the captions for its whole
-  sentence (**caption-video**, Hook). Break text into lines by hand (`\n`) on its spoken beats, one phrase
+  sentence (**caption-video**, Hook); when that text is shortened or moved, the captions come back for what it no longer covers. Break text into lines by hand (`\n`) on its spoken beats, one phrase
   per line ("Spent more on supplements / than your car insurance? / You need to hear this" is three), the lines of
   similar length and never one word alone on a line. When the speaker lists things, stack them: one line per item with an
   emoji (a person in it matches the viewer: a woman for a women's ad), in on its word with a soft ding, held to the cut. Small print
-  (a results disclaimer) sits at the very bottom edge, the one thing allowed outside the safe zone, and shows only beside the claim it covers, never in the hook, and none in a
+  (a results disclaimer: small white text, no outline, opacity 0.7, a light shadow) sits at the very bottom edge, the one thing allowed outside the safe zone, and shows only beside the claim it covers, never in the hook, and none in a
   first-person story. Text marks facts, lists and proof; the speaker's own experience ("my skin hasn't
   looked this calm") stays in the captions, since a graphic over it reads as an ad. Cards and
   stickers (a review, benefit pills) look like the platform's native stickers: flat, no shadow, one
@@ -166,7 +176,7 @@ change to V1's.
 The Studio preview is the live edit, so review and revisions never need an export. Export only when the user
 asks or approves the cut; an approval also means push to R2 right after the export (and again after each later
 approval). `node tools/edit-video.mjs export outputs/<ad>/edit.json` (or the user's Export button): H.264 + AAC at
-−14 LUFS into `final/<id>_V<n>_…mp4`, about 20 s for 80 s of 1080p; `--out` names it per the brand's
+−14 LUFS into `final/<id>_<initials>_V<n>_…mp4`, about 20 s for 80 s of 1080p; `--out` names it per the brand's
 brief template if it has one. Several versions go in one command (`export edit.json edit-v2.json …`), all at once (one by one on a light computer). `--scale 0.5` makes a quick draft,
 `--from`/`--to` a section. Never grade your own render; hand over the path.
 

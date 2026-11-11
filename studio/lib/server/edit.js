@@ -1,10 +1,11 @@
 // An ad's edit: its versions (edit.json, edit-v2.json, …), review comments (comments/<id>.json), export state and .md
-// saves. A comment on a .md (file, quote: the text it's about) or on footage.json (quote: the scene) shares comments/
-// with the video's comments (t, box). Each function takes the ad's folder as adDir gives it.
+// saves. A comment on a .md (file: its path in the folder, quote: the text it's about) or on footage.json (quote: the
+// scene) shares comments/ with the video's comments (t, box). Each function takes the ad's folder as adDir gives it;
+// the .md saves and comments also take the brand's inputs/ (its pages).
 import { spawn } from 'node:child_process';
-import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { basename, join, resolve } from 'node:path';
-import { ORIGIN, compose, endOf, mapTimes, r3 } from '../../engine/doc.js';
+import { AD_HEAD } from '../client/format.js';
 import { adFolders } from './ads.js';
 import { readJson, within } from './brands.js';
 import { repoRoot } from './root.js';
@@ -61,7 +62,7 @@ export function editInfo(dir) {
 // Returns the saved comment (null when removed).
 export function saveComment(dir, comment) {
   const t = Number(comment?.t), text = String(comment?.text || '').trim(), file = comment?.file && String(comment.file);
-  if (file ? !/^([^/\\\0]+\.md|footage\.json)$/i.test(file) || !existsSync(join(dir, file)) : !Number.isFinite(t) || t < 0) throw new Error('a comment needs a time, a .md file or footage.json');
+  if (file ? !/^([^\\\0]+\.md|footage\.json)$/i.test(file) || file.split('/').includes('..') || !existsSync(join(dir, file)) : !Number.isFinite(t) || t < 0) throw new Error('a comment needs a time, a .md file or footage.json');
   if (!text) throw new Error('a comment needs text');
   const edit = file && comment.edit ? { where: String(comment.edit.where || '').slice(0, 200), from: String(comment.edit.from ?? ''), to: String(comment.edit.to ?? '') } : null;
   const deleted = !!(edit && comment.deleted);
@@ -137,69 +138,69 @@ export function decideScene(dir, { scene, ticks, decision, text }) {
   return saveComment(dir, { file: 'footage.json', quote: key, text: `${decision === 'approved' ? 'Approved' : 'Reshoot'}${said ? `: ${said}` : ''}` });
 }
 
-// The user trims a media clip in Studio: { plan, id: '<track>.<clip>' (raw indices), in, dur } sets the part of its
-// source it plays. Its start stays put; when its end moves, everything after it slides along if the clip sits in a
-// sequence (the next clip on its track starts where it ended), and a clip of the same name starting at the same
-// time on another track (its voice) gets the same trim. In a hook version, a body clip is trimmed in its base.
-export async function trimClip(dir, { plan, id, in: inS, dur }) {
-  if (!PLAN.test(plan || '')) throw new Error('bad edit document');
-  let f = join(dir, plan), doc = readJson(f, null), [ti, ci] = String(id || '').split('.').map(Number);
-  if (doc?.base) {
-    const shown = compose(doc, readJson(join(dir, doc.base), {})).tracks[ti]?.clips[ci], o = shown?.[ORIGIN];
-    if (!o) throw new Error('no such clip');
-    if (!o[0]) {
-      const base = doc.base;
-      f = join(dir, base); doc = readJson(f, null);
-      // A base clip crossing the version's cut shows from the cut: map its in and length back to the base's clock.
-      const b = doc?.tracks?.[o[1]]?.clips?.[o[2]], skip = r3((b?.in ?? 0) - (shown.in ?? 0)); // ≤ 0: what the cut hides
-      if (skip && b) {
-        inS = r3(inS + skip); dur = r3(dur - skip / (b.rate ?? 1));
-        if (inS < 0) throw new Error(`this clip is shared with ${base} and starts before the cut there; trim its start in ${base}`);
-      }
-    }
-    [, ti, ci] = o;
-  }
-  const c = doc?.tracks?.[ti]?.clips?.[ci];
-  if (!c?.src) throw new Error('only a media clip can be trimmed');
-  if (!(Number.isFinite(inS) && inS >= 0 && Number.isFinite(dur) && dur > 0.05)) throw new Error('bad trim');
-  const at = c.at ?? 0;
-  const oldEnd = endOf(c), newEnd = r3(at + dur), delta = r3(newEnd - oldEnd);
-  const set = (x) => { x.in = r3(inS); x.end = newEnd; delete x.dur; };
-  const linked = !c.name ? [] : doc.tracks.flatMap((tr, i) => (i === ti ? [] : tr.clips.filter((x) => x.src && x.name === c.name && Math.abs((x.at ?? 0) - at) < 1e-3)));
-  const inSequence = doc.tracks[ti].clips.some((x) => x !== c && Math.abs((x.at ?? 0) - oldEnd) < 0.01);
-  const before = readFileSync(f, 'utf8');
-  set(c); linked.forEach(set);
-  // Like a cut when it shrinks.
-  if (inSequence && delta) mapTimes(doc, (t) => (t >= oldEnd - 1e-3 ? r3(t + delta) : delta < 0 && t > newEnd ? newEnd : t), new Set([c, ...linked]));
-  const after = JSON.stringify(doc, null, 1) + '\n';
-  writeFileSync(f, after);
-  (await catalogLib()).markEditing(dir, null);
-  return { delta, rippled: inSequence && !!delta, linked: linked.length, undo: { file: basename(f), before, after } };
-}
-
-// The user mutes or unmutes a track in Studio: { plan, track (its name), mute }. Unmuting also unmutes its clips, all
-// but freeze frames (rate under 0.1). In a hook version without that track, it changes the base's.
-export async function muteTrack(dir, { plan, track, mute }) {
-  if (!PLAN.test(plan || '')) throw new Error('bad edit document');
-  let f = join(dir, plan), doc = readJson(f, null), tr = doc?.tracks?.find((x) => x.name === track);
-  if (!tr && doc?.base) { f = join(dir, doc.base); doc = readJson(f, null); tr = doc?.tracks?.find((x) => x.name === track); }
-  if (!tr) throw new Error('no such track');
-  const before = readFileSync(f, 'utf8');
-  if (mute) tr.mute = true;
-  else { delete tr.mute; for (const c of tr.clips || []) if (c.mute && !((c.rate ?? 1) < 0.1)) delete c.mute; }
-  const after = JSON.stringify(doc, null, 1) + '\n';
-  writeFileSync(f, after);
-  (await catalogLib()).markEditing(dir, null);
-  return { undo: { file: basename(f), before, after } };
-}
-
-// Studio's undo / redo of a trim or mute: { file, text, expect } puts back text when the edit document is still expect.
-export function restoreEdit(dir, { file, text, expect }) {
+// Studio's manual edits (made in the browser: studio/engine/ops.js) and their undo: { file, text, expect } writes text
+// when the edit document still reads expect, so a change made on disk since is never overwritten.
+export async function saveEdit(dir, { file, text, expect }) {
   if (!PLAN.test(file || '') || typeof text !== 'string') throw new Error('bad edit document');
+  JSON.parse(text);
   const f = join(dir, file);
-  if (readFileSync(f, 'utf8') !== expect) throw new Error('the edit changed since; nothing undone');
+  if (readFileSync(f, 'utf8') !== expect) throw new Error('the edit changed on disk since; nothing saved');
   writeFileSync(f, text);
+  (await catalogLib()).markEditing(dir, null);
   return { ok: true };
+}
+
+// An image ad's Approve / Unapprove: moves a render (with its same-stem prompt and .gen.json) between drafts/ and final/,
+// numbering it as the next V there (finals stay V1, V2, … with no gaps; a Story keeps its 4:5's V), repoints the record and the prompt's File name,
+// sets the record's status (approved while final/ holds a render, else pending-review) and refreshes the index.
+// Rebuild the brand's ads index (tools/record-ad.mjs), which also copies each ad's meta.md into its record.
+const refreshIndex = (outputs) => spawn(process.execPath, [join(repoRoot(), 'tools', 'record-ad.mjs'), '--index', outputs], { cwd: repoRoot(), stdio: 'ignore' }).on('error', () => {});
+const IMG = /\.(png|jpe?g|webp|gif)$/i;
+const VER = new RegExp(`^(${AD_HEAD.source.slice(1)}V)(\\d+)(_.*)$`); // <id>_<initials>_V<n>_<rest>
+const STORY = /_Story$/;
+export function moveRender(dir, file) {
+  const m = /^(drafts|final)\/([^/\\\0]+)\.(png|jpe?g|webp|gif)$/i.exec(String(file || ''));
+  if (!m || !existsSync(join(dir, file))) throw new Error('no such render');
+  const [, from, stem] = m, to = from === 'drafts' ? 'final' : 'drafts';
+  mkdirSync(join(dir, to), { recursive: true });
+  const stems = (d) => readdirSync(join(dir, d)).filter((n) => IMG.test(n)).map((n) => n.replace(IMG, ''));
+  const renames = []; // [from rel stem, to rel stem]
+  const num = (n) => +(VER.exec(n)?.[2] || 0), setNum = (n, k) => n.replace(VER, (_, a, __, c) => `${a}${k}${c}`);
+  // A Story (<4:5 name>_Story) keeps its 4:5's V; anything else becomes the next V there.
+  const next = STORY.test(stem) ? num(stem) : Math.max(0, ...stems(to).map(num)) + 1;
+  renames.push([`${from}/${stem}`, `${to}/${setNum(stem, next)}`]);
+  if (from === 'final') { // close the gap: the finals left become V1, V2, … in their order, a Story with its 4:5
+    const left = stems('final').filter((n) => n !== stem && VER.test(n));
+    const order = [...new Set(left.map(num))].sort((x, y) => x - y);
+    left.forEach((n) => renames.push([`final/${n}`, `final/${setNum(n, order.indexOf(num(n)) + 1)}`]));
+  }
+  // Through a temporary name first, so a renumbering never lands on a file not yet moved.
+  const moves = renames.filter(([x, y]) => x !== y).map(([x, y], i) => {
+    const [d, s0] = x.split('/'), files = readdirSync(join(dir, d)).filter((n) => n.startsWith(`${s0}.`) && /^([a-z]+|gen\.json)$/i.test(n.slice(s0.length + 1)));
+    files.forEach((n) => renameSync(join(dir, d, n), join(dir, d, `.moving${i}${n.slice(s0.length)}`)));
+    return { x, y, d, files: files.map((n) => n.slice(s0.length)), i };
+  });
+  for (const { x, y, d, files, i } of moves) {
+    const [d2, s1] = y.split('/'), s0 = x.split('/')[1];
+    for (const ext of files) {
+      const dest = join(dir, d2, `${s1}${ext}`);
+      renameSync(join(dir, d, `.moving${i}${ext}`), dest);
+      if (/\.(txt|gen\.json)$/.test(ext)) writeFileSync(dest, readFileSync(dest, 'utf8').split(s0).join(s1)); // its File name line
+    }
+  }
+  const folder = basename(dir), outputs = resolve(dir, '..');
+  const rec = join(outputs, 'json', `${folder.split('_')[0]}.json`);
+  if (existsSync(rec)) {
+    // Every move at once (placeholders first), so one rename's new path is never renamed again.
+    let t = readFileSync(rec, 'utf8');
+    moves.forEach(({ x, i }) => { t = t.split(`${folder}/${x}.`).join(`\0${i}\0`); });
+    moves.forEach(({ y, i }) => { t = t.split(`\0${i}\0`).join(`${folder}/${y}.`); });
+    const r = JSON.parse(t);
+    r.status = stems('final').length ? 'approved' : 'pending-review';
+    writeFileSync(rec, JSON.stringify(r, null, 2) + '\n');
+    refreshIndex(outputs);
+  }
+  return { to, file: `${renames[0][1]}.${m[3]}` };
 }
 
 // Run tools/edit-video.mjs export in the background; its progress lands in .export.json.
@@ -228,5 +229,6 @@ export function saveMd(dir, { name, text, base } = {}) {
     out = mine.map((l, i) => (l !== b[i] ? l : theirs[i])).join('\n');
   }
   writeFileSync(abs, out);
+  if (basename(abs) === 'meta.md') refreshIndex(resolve(dir, '..'));
   return { ok: true, v: Math.round(statSync(abs).mtimeMs), ...(out !== text && { text: out }) };
 }

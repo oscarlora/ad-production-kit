@@ -1,6 +1,6 @@
 'use client';
-// An ad's markdown file, edited in place: click a block or table cell to edit it as it reads (rich.js; a comment as
-// raw text; a "**Label:** text" block in a step's view as its title and its text) (Enter in a cell splits
+// A markdown file, an ad's or a brand page's (no ad: under inputs/), edited in place: click a block or table cell to edit it as it reads (rich.js; a comment, code,
+// front matter or a rule as raw text; a "**Label:** text" block in a step's view as its title and its text) (Enter in a cell splits
 // it into a new row below, and in a text block into a new block; Delete or Backspace in an empty row or block deletes it, and Backspace at its start merges it into the one above;
 // Shift+Enter is a line break, Esc is done); an "![title](path)" block is an image, audio or video (path
 // relative to the ad folder). Drag the grips to reorder blocks, table rows and columns. Each change saves to disk
@@ -11,9 +11,9 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { apiBase, editApi, fileUrl, mediaType, postJson } from '../../lib/client/api.js';
 import { clock } from '../../lib/client/format.js';
-import { isTyping, useUndo } from '../../lib/client/hooks.js';
+import { isTyping, useStored, useUndo } from '../../lib/client/hooks.js';
 import { blockKind, inSections, mediaItems, parseDoc, serializeDoc, tableCells, tableRow } from '../../lib/markdown.js';
-import { IcClock, IcGrip, IcPause, IcPlay, IcSound, IcText } from '../icons.js';
+import { IcClock, IcGrip, IcPanelOpen, IcPause, IcPlay, IcSound, IcText } from '../icons.js';
 import Player from '../Player.js';
 import Markdown, { Inline } from './Markdown.js';
 import { Compose, Comments, openComments, useFileText } from './parts.js';
@@ -512,14 +512,16 @@ function TitledEdit({ b, focus, change, done, split, join, untitle }) {
   );
 }
 
-// file: { name (relative to the ad folder), p, v }. view (else the whole file), as regex sources: only, the section
+// file: { name (relative to the ad folder, or inputs/ with no ad), p, v }; media paths are relative to that folder too.
+// view (else the whole file), as regex sources: only, the section
 // names to show; pick, the blocks among them; cols, a table's columns by header. script: its tables with a Line column
 // end with their spoken length and voice.
 export default function MdEditor({ ws, brand, ad, file, view, script, comments = [] }) {
   const only = view?.only && new RegExp(view.only, 'i'), pick = view?.pick && new RegExp(view.pick);
   const colRe = view?.cols && new RegExp(view.cols, 'i');
   const remote = useFileText(ws, brand, file.p, file.v);
-  const url = (path) => fileUrl(ws, brand, `outputs/${ad}/${path}`);
+  const folder = ad ? `outputs/${ad}` : 'inputs';
+  const url = (path) => fileUrl(ws, brand, `${folder}/${path}`);
   const api = editApi(ws, brand, ad);
   const [doc, setDoc] = useState(null);
   const [focus, setFocusState] = useState(null); // { id } a block, { id, r, c } a table cell
@@ -805,6 +807,7 @@ export default function MdEditor({ ws, brand, ad, file, view, script, comments =
     commentApi({ comment: { file: file.name, quote, text } });
   };
   const [line, setLine] = useState([]); // the comments on the row or block clicked last, lit in the list
+  const [notesHidden, setNotesHidden] = useStored('ad-production-kit-studio:doc-comments-hidden', false);
   const pickComment = (n) => {
     setCommentFocus(n.id);
     setLine([]);
@@ -898,9 +901,9 @@ export default function MdEditor({ ws, brand, ad, file, view, script, comments =
             <div key={b.id} data-id={b.id} className="mde__block" {...zone('block', b.id, 'y', moveBlock)} data-sel={isSel('block', b.id) || chosen.includes(b.id) || undefined}>
               {kind !== 'table' && grip({ kind: 'block', from: b.id })}
               {kind === 'media' ? <Media items={mediaItems(b.src)} url={url} />
-                : kind === 'table' ? <Table b={b} widthsKey={`${ws}/${brand}/${ad}/${file.name}`} colRe={colRe} focus={focus} setFocus={setFocus} open={open} change={change} done={done} comment={(text, quote) => commentApi({ comment: { file: file.name, quote, text } })} removed={removed} voice={script ? (lines, hook, check) => postJson(`${apiBase(ws, brand)}/voice`, { ad, lines, hook, check }).then((r) => r.p && fileUrl(ws, brand, r.p, r.v)) : null} url={url} grip={grip} zone={zone} isSel={isSel} rowSel={rowSel} rowsAt={rowsAt} pickRows={pickRows} />
+                : kind === 'table' ? <Table b={b} widthsKey={`${ws}/${brand}/${ad || folder}/${file.name}`} colRe={colRe} focus={focus} setFocus={setFocus} open={open} change={change} done={done} comment={(text, quote) => commentApi({ comment: { file: file.name, quote, text } })} removed={removed} voice={script ? (lines, hook, check) => postJson(`${apiBase(ws, brand)}/voice`, { ad, lines, hook, check }).then((r) => r.p && fileUrl(ws, brand, r.p, r.v)) : null} url={url} grip={grip} zone={zone} isSel={isSel} rowSel={rowSel} rowsAt={rowsAt} pickRows={pickRows} />
                 : focus?.id === b.id ? (
-                  kind === 'comment' ? <Area value={b.src} same={(x, y) => x.trim() === y.trim()} onChange={(v) => change(b.id, () => v)} onDone={done} />
+                  kind === 'comment' || kind === 'code' ? <Area value={b.src} same={(x, y) => x.trim() === y.trim()} onChange={(v) => change(b.id, () => v)} onDone={done} />
                     : pick && LABELED.test(b.src) ? <TitledEdit b={b} focus={focus} change={change} done={done} split={(before, after) => splitBlock(b.id, before, after)} join={(text) => joinTitled(b.id, text)} untitle={(text) => reTitle(b.id, text, { start: true })} />
                     : <RichText mode="block" className="md mde__area" value={b.src} at={focus.at} start={focus.start} onChange={(v) => change(b.id, () => v)} onBlur={done} onEnter={LIST.test(b.src) ? undefined : (before, after) => splitBlock(b.id, before, after)} onEmptyDelete={() => dropBlock(b.id)} onMergeBack={(text) => mergeBlock(b.id, text)} offset={focus.offset} />
                 ) : (
@@ -913,11 +916,16 @@ export default function MdEditor({ ws, brand, ad, file, view, script, comments =
           );
         })}
       </div>
-      {comments.length > 0 && (
+      {comments.length > 0 && !notesHidden && (
         <div className="mde-doc__side">
           <Comments comments={comments} focus={commentFocus} lit={line} onPick={pickComment} onAction={commentApi} hint="Select text to leave a comment."
-            lead={(n) => n.quote && <span className="ed-comment__quote">{n.quote}</span>} />
+            lead={(n) => n.quote && <span className="ed-comment__quote">{n.quote}</span>} onHide={() => setNotesHidden(true)} />
         </div>
+      )}
+      {comments.length > 0 && notesHidden && (
+        <button type="button" className="btn btn--mini mde-doc__show" onClick={() => setNotesHidden(false)} title="Show comments">
+          <IcPanelOpen />{openComments(comments).length} comments
+        </button>
       )}
       {ask && <CommentField ask={ask} setAsk={setAsk} onSave={saveComment} />}
     </div>

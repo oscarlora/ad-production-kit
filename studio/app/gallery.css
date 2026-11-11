@@ -1,0 +1,18 @@
+/* The masonry grid and its media frames: Studio's Board and Media, and the review link's page (share/, which copies
+   this file in at deploy). Values come from the page's tokens. Layout: studio/lib/client/masonry.js. */
+.masonry { display: flex; gap: 12px; align-items: flex-start; }
+.masonry__col { flex: 1; display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+
+/* Media in a frame: a hairline inside the edge so white images don't melt into the page. */
+.media-frame {
+  position: relative; display: block; width: 100%; overflow: hidden;
+  padding: 0; border: 0; font: inherit;
+  border-radius: var(--radius); background: var(--media-bg);
+}
+.media-frame::after { content: ""; position: absolute; inset: 0; border-radius: inherit; box-shadow: inset 0 0 0 1px var(--media-outline); pointer-events: none; }
+.media-frame > img, .media-frame > video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; display: block; }
+:is(a, button).media-frame { cursor: zoom-in; }
+:is(a, button).media-frame > :is(img, video) { transition: transform var(--dur-enter) var(--ease-out); }
+@media (hover: hover) and (pointer: fine) {
+  :is(a, button).media-frame:hover > :is(img, video) { transform: scale(1.02); }
+}

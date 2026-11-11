@@ -1,8 +1,9 @@
 #!/usr/bin/env node
-// generate-sfx.mjs — isolated sound effects with Suno Sounds on kie.ai (two takes per run).
+// generate-sfx.mjs — isolated sound effects with Suno Sounds on kie.ai, or ElevenLabs on sunra.ai
+// (two takes per run).
 
 import { die, parseArgs, usage } from './lib/catalog.mjs';
-import { envHelp, errorText, runHelp, runOpts, writeSidecars } from './lib/providers.mjs';
+import { blocked, envHelp, errorText, runHelp, runOpts, sunraJob, times, writeSidecars } from './lib/providers.mjs';
 import { runSuno, SUNO_MODELS } from './generate-music.mjs';
 
 const KEYS = ['Any', ...['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'].flatMap((k) => [k, `${k}m`])];
@@ -22,7 +23,8 @@ Optional:
   --loop                   Loops seamlessly (ambience, room tone)
   --tempo <bpm>            1–300 (default automatic)
   --key <key>              Any (default) | C | Cm | C# | C#m … B | Bm
-${runHelp(600, { num: 'Runs (default 1); each gives two takes (<out>, <out>_2)', gateway: null })}
+${runHelp(600, { num: 'Runs (default 1); each gives two takes (<out>, <out>_2)', unlisted: false,
+  providers: 'sunra: ElevenLabs (max 450 chars; no --loop, --tempo, --key). No Gateway' })}
 
 ${envHelp()}`;
 
@@ -39,10 +41,18 @@ const key = args.key ? KEYS.find((k) => k.toLowerCase() === String(args.key).toL
 if (args.key && !key) die(`--key must be one of ${KEYS.join(', ')}, got: ${args.key}`);
 
 const input = { prompt, model, sound_loop: !!args.loop, sound_tempo: tempo, sound_key: key };
+const { num, timeout } = runOpts(args, 600);
+// sunra has no Suno Sounds: ElevenLabs, one take per call.
+const text = String(args.prompt).trim();
+const sunra = async () => {
+  if (args.loop || tempo || key) throw blocked('ElevenLabs on sunra takes no --loop, --tempo or --key.');
+  if (text.length > 450) throw blocked('ElevenLabs on sunra takes prompts up to 450 characters.');
+  return times(num * 2, async () => [{ url: (await sunraJob('elevenlabs/sound-effects/text-to-sound-effects', { text }, timeout)).audio.url }]);
+};
 try {
-  const takes = await runSuno('ai-music-api/sounds', input, { ...runOpts(args, 600), out: args.out });
+  const { takes, provider } = await runSuno({ name: `suno-sounds-${model}`, kie: ['ai-music-api/sounds', input], sunra, provider: args.provider, num, timeout, out: args.out });
   await writeSidecars(takes.map((t) => t.file), {
-    tool: 'generate-sfx', model: `suno-sounds-${model}`, provider: 'kie', prompt: args.prompt,
+    tool: 'generate-sfx', model: provider === 'sunra' ? 'elevenlabs-sound-effects' : `suno-sounds-${model}`, provider, prompt: args.prompt,
     params: { loop: args.loop || null, tempo, key },
   });
 } catch (e) { die(errorText(e)); }

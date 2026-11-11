@@ -7,8 +7,8 @@ import { resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { die, parseArgs, usage } from './lib/catalog.mjs';
 import {
-  envHelp, errorText, fetchResult, gatewayClient, kieJob, logGatewayWarnings, pickModel, runHelp, runOpts, runProviders, saveResults,
-  times, userError, workspaceKeys, writeSidecars,
+  blocked, envHelp, errorText, fetchResult, gatewayClient, kieJob, logGatewayWarnings, pickModel, runHelp, runOpts, runProviders, saveResults,
+  sunraJob, times, userError, workspaceKeys, writeSidecars,
 } from './lib/providers.mjs';
 
 const HELP = `generate-voice.mjs — voiceover generator (kie.ai)
@@ -26,7 +26,7 @@ Optional:
                            Puck; 70 voices, e.g. Kore, Puck, Charon, Zephyr, Leda). A voices-file voice wins
   --voices-file <path>     Each character once (format below)
   --format <ext>           mp3 (default) | wav
-${runHelp(600, { gateway: ' (Gemini, one speaker only)' })}
+${runHelp(600, { providers: 'sunra: 30 of the voices, 5,000 characters. Gateway: one speaker' })}
 
 Lines may carry Gemini tone tags in angle brackets (<laugh>, <sigh>, <short pause>, <whispers>, ...).
 
@@ -39,6 +39,10 @@ Voices file: one block per character:
 ${envHelp()}`;
 
 const KEYS = { description: 'description', voice_name: 'voiceName' };
+// The voices sunra's Gemini TTS takes.
+const SUNRA_VOICES = ['Zephyr', 'Puck', 'Charon', 'Kore', 'Fenrir', 'Leda', 'Orus', 'Aoede', 'Callirrhoe', 'Autonoe', 'Enceladus', 'Iapetus',
+  'Umbriel', 'Algieba', 'Despina', 'Erinome', 'Algenib', 'Rasalgethi', 'Laomedeia', 'Achernar', 'Alnilam', 'Schedar', 'Gacrux', 'Pulcherrima',
+  'Achird', 'Zubenelgenubi', 'Vindemiatrix', 'Sadachbia', 'Sadaltager', 'Sulafat'];
 
 function parseVoicesFile(text) {
   const profiles = {};
@@ -113,6 +117,18 @@ async function main() {
     console.error(`kie       ${entry.kie}  voices=${input.speakers.map((s) => s.voice_name).join(',')}  turns=${turns.length}`);
     return Promise.all((await times(num, () => kieJob(entry.kie, input, timeout))).map(fetchAudio));
   };
+  // One speaker: text-to-speech; two: text-to-dialogue, a turn per line.
+  const runSunra = async () => {
+    const odd = speakers.map(voiceOf).filter((v) => !SUNRA_VOICES.includes(v));
+    if (odd.length) throw blocked(`sunra has no voice ${odd.join(', ')}.`);
+    if (turns.reduce((n, t) => n + t.text.length, 0) > 5000) throw blocked('sunra takes up to 5,000 characters of script.');
+    const style = (label) => characters[label]?.description || undefined;
+    const [op, body] = speakers.length === 1
+      ? ['text-to-speech', { text: turns.map((t) => t.text).join('\n'), voice: voiceOf(speakers[0]), style: style(speakers[0]) }]
+      : ['text-to-dialogue', { inputs: turns.map((t) => ({ text: t.text, voice: voiceOf(t.label), style: style(t.label) })) }];
+    console.error(`sunra     ${entry.sunra}/${op}  voices=${speakers.map(voiceOf).join(',')}  turns=${turns.length}`);
+    return Promise.all((await times(num, () => sunraJob(`${entry.sunra}/${op}`, body, timeout))).map((o) => fetchAudio(o.audio.url)));
+  };
   // The Gateway's speech call takes one voice.
   const runGateway = async () => {
     if (speakers.length > 1) throw userError('the AI Gateway speech call takes one speaker.');
@@ -129,7 +145,7 @@ async function main() {
       return transcode({ bytes: r.audio.uint8Array, format: r.audio.format }, format);
     });
   };
-  const { results, provider } = await runProviders({ entry, provider: args.provider, ws: W, kie: runKie, gateway: runGateway });
+  const { results, provider } = await runProviders({ entry, provider: args.provider, ws: W, kie: runKie, sunra: runSunra, gateway: runGateway });
   const saved = await saveResults(results, args.out, { fallbackExt: format });
   await writeSidecars(saved, {
     tool: 'generate-voice', model: entry.name, provider, prompt: scriptText.trim(),
