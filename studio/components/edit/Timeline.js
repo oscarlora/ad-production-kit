@@ -3,8 +3,8 @@
 // Click or drag along the ruler to move the playhead; drag above it to pick a stretch to comment on, its edges snapping
 // to a block edge within SNAP px. With Shift held, the playhead and both edges jump to the nearest block edge.
 // The pointer over the lanes skims: the preview shows that moment, and a click on an empty lane moves the playhead there.
-// A click picks a clip or caption line; dragging it moves it (onto another track's row too, or the ruler's for a new
-// top track), dragging an edge trims it (both snap to block edges and
+// A click picks a clip or caption line (Shift or ⌘: several, to change together); dragging it moves it (onto another track's row too, or the ruler's for a new
+// top track), dragging an edge trims it, leaving a gap (by its name bar: changes its speed to fill the space) (both snap to block edges and
 // the playhead), a double click opens a media clip's trim panel. Pinch or ⌘-scroll zooms on the pointer, + and - on
 // the playhead, Shift+Z fits the whole edit, from the whole edit in view down to single frames; zoomed in, the timeline scrolls sideways and follows the playhead.
 // A track's name drags up or down to reorder the tracks and renames on a double click (onRename); hovered, it shows a bin that deletes the track (onRemove). Its eye hides its picture in the preview only; its speaker mutes or unmutes it in the edit. simple hides the
@@ -20,9 +20,9 @@ import Wave from '../Wave.js';
 const pct = (x, dur) => `${(x / dur) * 100}%`;
 const base = (src) => String(src).split('/').pop().replace(/\.[^.]+$/, '');
 // A text block shows its words (accent marks {…|color} dropped), anything else its name or file.
-export const labelOf = (c) => (c.type === 'text' ? String(c.text).replace(/\{([^}|]*)(\|[^}]*)?\}/g, '$1').replace(/\s*\n\s*/g, ' ') : c.name || (c.src ? base(c.src) : c.type === 'custom' ? [c.draw, c.n].filter((x) => x != null).join(' ') : c.type));
+export const labelOf = (c) => (c.type === 'text' ? String(c.text).replace(/\{([^}|]*)(\|[^}]*)?\}/g, '$1').replace(/\s*\n\s*/g, ' ') : c.src ? base(c.src) : c.name || (c.type === 'custom' ? [c.draw, c.n].filter((x) => x != null).join(' ') : c.type));
 const SNAP = 8;
-const EDGE = 7; // px from a block's end that grab its edge
+const EDGE = 12; // px from a block's end that grab its edge (a cut's handle, .tl-cut, takes the outer 5 of it)
 const PX_PER_FRAME = 12; // the closest zoom: every frame a tick
 // Every block edge (clips and caption lines), for a dragged stretch to snap to.
 const edgesOf = (doc) => [0, doc.duration || 0, ...doc.tracks.flatMap((tr) => tr.clips.flatMap((c) => (c.lines ? c.lines.flatMap((l) => [l.at, l.end]) : [c.at, c.end])))];
@@ -61,10 +61,11 @@ const Track = memo(function Track({ tr, dur, hide, onToggle, onMute, onRemove, o
   const hideLabel = `${hide ? 'Show' : 'Hide'} ${tr.name} (preview only)`, muteLabel = `${mute ? 'Unmute' : 'Mute'} ${tr.name}`;
   // A block's props: where it sits (as dragged), whether it is picked, and its grab.
   const block = (c, li, at, end) => {
-    const on = (x) => x && x.id === c.id && (x.li ?? null) === li, d = on(drag) ? drag : null;
-    if (d) { if (d.mode !== 'end') at += d.d; if (d.mode !== 'start') end += d.d; }
+    const d = drag && drag.id === c.id && (drag.li ?? null) === li ? drag : null;
+    if (d) { if (d.mode !== 'end' && d.mode !== 'roll') at += d.d; if (d.mode !== 'start') end += d.d; }
+    if (drag?.mode === 'roll' && drag.next === c.id && li == null) at += drag.d; // the clip after a rolled cut starts with it
     return {
-      style: { left: pct(at, dur), width: pct(end - at, dur) }, 'aria-selected': on(sel) || undefined, 'data-drag': d ? '' : undefined,
+      style: { left: pct(at, dur), width: pct(end - at, dur) }, 'aria-selected': sel.split('|').includes(`${c.id}:${li ?? ''}`) || undefined, 'data-drag': d ? '' : undefined,
       onPointerDown: (e) => onGrab(e, c, li), onPointerMove: d ? undefined : edgeCursor, onPointerLeave: d ? undefined : edgeCursor,
     };
   };
@@ -89,15 +90,24 @@ const Track = memo(function Track({ tr, dur, hide, onToggle, onMute, onRemove, o
             </div>
           ))
           : (
-          <div key={c.id} className="tl-clip" data-type={c.type} {...block(c, null, c.at, c.end)} onDoubleClick={c.src && c.type !== 'image' ? () => onOpen(c.id) : undefined} title={c.type === 'text' ? undefined : `${labelOf(c)} · ${clock(c.at, true)}–${clock(c.end, true)}`}>
+          <div key={c.id} className="tl-clip" data-type={c.type} {...block(c, null, c.at, c.end)} onDoubleClick={c.src && c.type !== 'image' ? () => onOpen(c.id) : undefined} title={c.type === 'text' ? undefined : `${labelOf(c)} · ${clock(c.at, true)}–${clock(c.end, true)}${c.type === 'video' || c.type === 'audio' ? ' · drag an edge to trim it; drag it by the name bar to change the speed' : ''}`}>
             {c.type === 'video' && c.src in lib && <Film className="tl-film" src={url(c.src)} sprites={lib[c.src]?.sprites} from={c.in} to={c.in + (c.end - c.at) * c.rate} />}
             {(c.type === 'audio' || c.type === 'video') && c.src in lib && <Wave className="tl-wave" src={url(c.src)} peaks={lib[c.src]?.peaks} dur={lib[c.src]?.dur} from={c.in} to={c.in + (c.end - c.at) * c.rate} bottom />}
-            <span className="tl-label">{labelOf(c)}</span>
+            {(() => { // its name and, off 1×, its speed (live while a bar edge is dragged): a bar over a video's frames, else on the block
+              const r = drag?.id === c.id && drag.rate ? drag.rate : c.rate !== 1 && c.rate;
+              const info = <><span className="tl-label">{labelOf(c)}</span>{r ? <span className="tl-speed" data-live={drag?.id === c.id && drag.rate ? '' : undefined}>{Math.round(r * 100) / 100}×</span> : null}</>;
+              return c.type === 'video' ? <div className="tl-bar">{info}</div> : info;
+            })()}
             {c.type === 'text' && <Pop text={labelOf(c)} at={c.at} end={c.end} />}
             {tin(c) > 0 && <span className="tl-tr" title={c.transition.type} />}
             {keyed(c.volume) && <Volume keys={c.volume.map(([k, v]) => [k - c.at, v])} dur={c.end - c.at} />}
           </div>
         ))}
+        {cutsOf(tr.clips).map(([a, b]) => { // a cut between two touching clips: drag it to move both sides together
+          const on = drag?.mode === 'roll' && drag.id === a.id;
+          return <div key={`cut-${a.id}`} className="tl-cut" data-drag={on ? '' : undefined} style={{ left: pct(a.end + (on ? drag.d : 0), dur) }}
+            title="Drag the cut: right, the left clip plays on and the right one starts later; left, the opposite" onPointerDown={(e) => onGrab(e, a, null, b)} />;
+        })}
         {ghost && <div className="tl-clip" data-drag="" style={{ left: pct(ghost.at, dur), width: pct(ghost.end - ghost.at, dur) }}><span className="tl-label">{ghost.text}</span></div>}
         {tr.clips.flatMap((c) => keyTimes(c).map((k) => <span key={`${c.id}-${k}`} className="tl-key" style={{ left: pct(k, dur) }} />))}
         {keyed(tr.volume) && <Volume keys={tr.volume} dur={dur} />}
@@ -112,7 +122,18 @@ function edgeAt(e) {
   const r = e.currentTarget.getBoundingClientRect(), x = e.clientX - r.left;
   return r.width < 3 * EDGE ? null : x < EDGE ? 'start' : x > r.width - EDGE ? 'end' : null;
 }
-const edgeCursor = (e) => { const el = e.currentTarget; if (e.type !== 'pointerleave' && edgeAt(e)) el.dataset.edge = ''; else delete el.dataset.edge; };
+// Over a video's name bar, an edge changes its speed; below it, it trims.
+const inBar = (e) => { const bar = e.currentTarget.querySelector(':scope > .tl-bar'); return !!bar && e.clientY < bar.getBoundingClientRect().bottom; };
+// Lights the edge a drag would change: data-edge says which, data-zone whether it trims or changes the speed.
+const edgeCursor = (e) => {
+  const el = e.currentTarget, edge = e.type !== 'pointerleave' && edgeAt(e);
+  if (edge) { el.dataset.edge = edge; el.dataset.zone = inBar(e) ? 'speed' : 'trim'; } else { delete el.dataset.edge; delete el.dataset.zone; }
+};
+// The cuts on a track: pairs of clips (not caption lines) where one starts as the other ends.
+const cutsOf = (clips) => {
+  const cs = clips.filter((c) => c.type !== 'captions').sort((x, y) => x.at - y.at);
+  return cs.flatMap((a, i) => cs.slice(i + 1).filter((b) => Math.abs(b.at - a.end) < 1e-3).slice(0, 1).map((b) => [a, b]));
+};
 
 // fn as one function that never changes, calling the latest: a memoized track given it doesn't redraw.
 function useLatest(fn) {
@@ -140,8 +161,10 @@ const Ruler = memo(function Ruler({ dur, pps, fps }) {
 
 // children: the transport (play and time), in the corner above the track names.
 // range: the stretch being picked, [from, to]; onRange(range, done) reports it as it's dragged and when let go.
-// sel: the picked block, { id, li (a caption line's index, else null) }; onSelect(clip, li) picks one (null: none).
-// onDrag(clip, li) → limit(mode, d, leaving its track): how far a drag may go; onRetime(clip, li, mode, d, to) when it is let go
+// sel: the picked blocks, "<clip id>:<caption line's index, if one>" joined by |; onSelect(clip, li, add) picks one
+// (null: none; add: with Shift or ⌘, one more or one fewer).
+// onDrag(clip, li) → limit(mode, d, leaving its track, stretch): how far a drag may go, with limit.rate(mode, d) the speed a
+// stretch gives; onRetime(clip, li, mode, d, to, stretch) when it is let go
 // (to: the track a clip was dragged onto, by name; '' the ruler's row, for a new top track).
 // onOrder(name, before): a track dragged by its name to just above the track `before` (null: the bottom).
 export default function Timeline({ doc, t, playing, comments, nums, lib, lit, range, onRange, onSeek, onPick, onHover, off, onToggle, onMute, sel, onSelect, onDrag, onRetime, onOrder, onRemove, onRename, onOpen, onSkim, url, simple, children }) {
@@ -208,35 +231,39 @@ export default function Timeline({ doc, t, playing, comments, nums, lib, lit, ra
     if (x < 0 || x > w - 24) el.scrollLeft += x - (playing ? 48 : w / 2);
   }, [t, zoom, dur, playing]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Dragging a block: its middle moves it, an edge trims it; the moving edges snap to the other blocks' and the playhead.
+  // Dragging a block: its middle moves it, an edge trims it (leaving any gap open), an edge of a video's name bar changes
+// its speed to fit (shown on it as it goes); the moving edges snap to the other blocks' and the playhead.
   const [drag, setDrag] = useState(null); // { id, li, mode, d, to (the track it is over), ghost (the block drawn there) }
-  const grab = (e, c, li) => {
+  const grab = (e, c, li, next) => { // next: the clip after a cut grabbed between them (a roll)
     if (e.button !== 0) return;
     e.stopPropagation();
-    onSelect(c, li);
-    const mode = edgeAt(e) || 'move', x0 = e.clientX, y0 = e.clientY, lane = e.currentTarget.parentElement.getBoundingClientRect();
+    const add = e.shiftKey || e.metaKey; // with Shift or ⌘: one more picked (or one fewer), nothing dragged
+    onSelect(c, li, add);
+    if (add) return;
+    const mode = next ? 'roll' : edgeAt(e) || 'move', x0 = e.clientX, y0 = e.clientY, lane = e.currentTarget.parentElement.getBoundingClientRect();
     const b = li == null ? c : c.lines[li], limit = onDrag(c, li), tol = (SNAP / lane.width) * dur;
     const stops = [t, ...edges.filter((s) => s !== b.at && s !== b.end)];
     const home = e.currentTarget.closest('.tl-track');
+    const stretch = (mode === 'start' || mode === 'end') && li == null && inBar(e); // an edge of the name bar changes the speed to fit
     let d = 0, moved = false, to;
     const onMove = (ev) => {
       if (!moved && Math.hypot(ev.clientX - x0, ev.clientY - y0) < 3) return;
       moved = true;
       d = ((ev.clientX - x0) / lane.width) * dur;
       let best = tol;
-      for (const edge of mode === 'move' ? [b.at, b.end] : [mode === 'start' ? b.at : b.end]) for (const s of stops) {
+      for (const edge of mode === 'move' ? [b.at, b.end] : [mode === 'start' ? b.at : b.end]) for (const s of stops) { // a roll moves the end
         if (Math.abs(s - edge - d) < best) { best = Math.abs(s - edge - d); d = s - edge; }
       }
       // a clip dragged over another track's row, or the ruler's, lands there
       const row = mode === 'move' && li == null && document.elementFromPoint(ev.clientX, ev.clientY)?.closest('.tl-track');
       to = row && row !== home ? row.dataset.track ?? '' : undefined;
-      d = limit(mode, d, to != null);
-      setDrag({ id: c.id, li, mode, d, to, ghost: to != null && { at: b.at + d, end: b.end + d, text: labelOf(c) } });
+      d = limit(mode, d, to != null, stretch);
+      setDrag({ id: c.id, li, mode, d, to, next: next?.id, rate: stretch ? limit.rate(mode, d) : null, ghost: to != null && { at: b.at + d, end: b.end + d, text: labelOf(c) } });
     };
     const onUp = () => {
       window.removeEventListener('pointermove', onMove); window.removeEventListener('pointerup', onUp);
       setDrag(null);
-      if (moved && (Math.abs(d) > 1e-3 || to != null)) onRetime(c, li, mode, d, to);
+      if (moved && (Math.abs(d) > 1e-3 || to != null)) onRetime(c, li, mode, d, to, stretch);
     };
     window.addEventListener('pointermove', onMove);
     window.addEventListener('pointerup', onUp);
@@ -308,7 +335,7 @@ export default function Timeline({ doc, t, playing, comments, nums, lib, lit, ra
       </div>
       {!simple && doc.tracks.map((tr, i) => {
         const has = (x) => (x && tr.clips.some((c) => c.id === x.id) ? x : null);
-        return tr.clips.length > 0 && <Track key={i} tr={tr} dur={dur} hide={off.has(tr.name)} onToggle={onToggle} onMute={mute} onRemove={remove} onRename={rename} onGrab={onGrab} onOpen={open} sel={has(sel)} drag={has(drag)} ghost={drag?.to === tr.name ? drag.ghost : null} onLift={lift} over={!order ? undefined : order.before === tr.name ? 'top' : order.before == null && tr === shownTracks.at(-1) ? 'bottom' : undefined} url={url} lib={lib} />;
+        return tr.clips.length > 0 && <Track key={i} tr={tr} dur={dur} hide={off.has(tr.name)} onToggle={onToggle} onMute={mute} onRemove={remove} onRename={rename} onGrab={onGrab} onOpen={open} sel={sel.split('|').filter((k) => tr.clips.some((c) => k.startsWith(`${c.id}:`))).join('|')} drag={has(drag)} ghost={drag?.to === tr.name ? drag.ghost : null} onLift={lift} over={!order ? undefined : order.before === tr.name ? 'top' : order.before == null && tr === shownTracks.at(-1) ? 'bottom' : undefined} url={url} lib={lib} />;
       })}
       <div className="tl-play">
         {range && <div className="tl-range" style={{ left: pct(range[0], dur), width: pct(range[1] - range[0], dur) }} />}

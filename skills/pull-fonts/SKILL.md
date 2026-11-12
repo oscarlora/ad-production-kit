@@ -24,7 +24,8 @@ sheet and attach it when generating. Build it during research, once the brand's 
    ```
    One `--font` per font: `Source|weight|role|sample`; write the H1 `sample` in the brand's headline case. Source is a Google family name, a font-file URL, or a local `.ttf`/`.otf`. Defaults render white-on-dark; pass `--bg`/`--fg` hex to match the brand.
 3. **Record in the brand's `inputs/DESIGN.md`**: each font in `typography` (role, family, weight);
-   case and the sheet path under Typography.
+   case and the sheet path under Typography. Font files not on Google Fonts (the brand's own, a `.ttf`, `.otf` or
+   `.woff2` per weight) go in `inputs/media/brand/fonts/`; Studio's editor lists them in its font picker.
 
 ## Use in generation
 

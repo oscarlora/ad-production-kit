@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // generate-voice.mjs — generate voiceovers on kie.ai (models: tools/lib/providers.mjs MODELS).
-// Each saved file gets a <stem>.gen.json sidecar.
+// Each saved file gets a gen/<stem>.gen.json sidecar.
 
 import { readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';

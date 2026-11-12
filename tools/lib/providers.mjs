@@ -355,7 +355,12 @@ export async function saveResults(results, out, { fallbackExt, transform = (b) =
 // A path relative to its brand folder when it is in one (URLs and other paths as given).
 export const brandRel = (p) => (/^https?:\/\//i.test(p) || !inferBrand(p) ? p : relative(brandDirFrom(p), resolve(p)).replace(/\\/g, '/'));
 
-// <stem>.gen.json beside each saved file, read by the Studio. Ref paths are brand-relative when possible.
+// A file's sidecar: gen/<stem>.gen.json in its folder, so the folder holds only media (older ones sit beside the file).
+// studio/lib/server/workflow.js and edit.js follow the same rule.
+export const sidecarOf = (p) => join(dirname(p), 'gen', basename(p).replace(/\.[^.]+$/, '') + '.gen.json');
+export const findSidecar = (p) => [sidecarOf(p), p.replace(/\.[^./]+$/, '') + '.gen.json'].find((s) => existsSync(s));
+
+// A sidecar for each saved file, read by the Studio. Ref paths are brand-relative when possible.
 // each[i] adds fields to saved[i]'s sidecar only.
 export async function writeSidecars(saved, { tool, model, provider, params = {}, refs = [], prompt, each = [] }) {
   const common = {
@@ -365,7 +370,9 @@ export async function writeSidecars(saved, { tool, model, provider, params = {},
     prompt,
   };
   for (const [i, p] of saved.entries()) {
-    await writeFile(resolve(p.replace(/\.[^./]+$/, '') + '.gen.json'), JSON.stringify({ ...common, ...each[i] }, null, 2) + '\n')
+    const side = resolve(sidecarOf(p));
+    await mkdir(dirname(side), { recursive: true })
+      .then(() => writeFile(side, JSON.stringify({ ...common, ...each[i] }, null, 2) + '\n'))
       .catch((e) => console.error(`WARN: no sidecar for ${p}: ${e.message}`)); // never fail a paid generation over it
   }
 }

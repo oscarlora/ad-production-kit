@@ -3,7 +3,7 @@
 // pinned to a moment and a spot on the frame. The agent edits the document and the preview follows the file; the
 // user edits it here too (engine/ops.js): each change shows at once, is saved to the file, and can be undone.
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { editApi, fileUrl, mediaUrl, openFile } from '../../lib/client/api.js';
+import { apiBase, editApi, fileUrl, mediaUrl, openFile } from '../../lib/client/api.js';
 import { clock } from '../../lib/client/format.js';
 import { isTyping, useStored, useUndo } from '../../lib/client/hooks.js';
 import { ORIGIN, compose, isBed, joint, r3, reframe, unstack } from '../../engine/doc.js';
@@ -11,7 +11,7 @@ import * as ops from '../../engine/ops.js';
 import { IcCursor, IcPause, IcPlay, IcQuote, IcSplit, IcType, IcUp } from '../icons.js';
 import { Compose, Comments, commentNumbers } from '../workflow/parts.js';
 import { SafeZones, useZones, ZoneButton } from '../Player.js';
-import Inspector, { Settings } from './Inspector.js';
+import Inspector, { BrandColors, Settings } from './Inspector.js';
 import Timeline, { labelOf } from './Timeline.js';
 import Trim from './Trim.js';
 
@@ -54,6 +54,8 @@ export default function Editor({ ws, brand, ad, edit }) {
   const [off, setOff] = useState(() => new Set()); // track names hidden in the preview (never written to the doc)
   const [trimId, setTrimId] = useState(null); // the clip open in the trim panel
   const [sel, setSel] = useState(null); // the picked clip or caption line: { id, li (the line's index in its file) }
+  const [also, setAlso] = useState([]); // more picked with it (Shift or ⌘ click), for one change to them all
+  useEffect(() => { if (!sel) setAlso([]); }, [sel]);
   const api = editApi(ws, brand, ad);
   // The edit's documents as last read from disk or changed here: { own: { file, text, doc }, base (a version's) }.
   // text is what the file holds, or will once the saves under way land. doc has any clips that overlapped on a track
@@ -83,13 +85,15 @@ export default function Editor({ ws, brand, ad, edit }) {
     recordUndo({ file, before, after });
   };
   const rootRef = useRef(null), tlRef = useRef(null);
-  useEffect(() => { // the fixed timeline's height sizes the preview above it
-    const el = tlRef.current;
-    if (!el) return undefined;
-    const ro = new ResizeObserver(() => rootRef.current?.style.setProperty('--tl-h', `${el.offsetHeight}px`));
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, [!!doc]); // eslint-disable-line react-hooks/exhaustive-deps -- tlRef exists once the doc has loaded
+  // The fixed timeline's height sizes the preview above it, watched on whichever element the timeline is now (it
+  // remounts), so the preview never runs under it.
+  const tlSeen = useRef(null);
+  const tlMount = useCallback((el) => {
+    tlRef.current = el;
+    tlSeen.current?.disconnect();
+    tlSeen.current = el && new ResizeObserver(() => rootRef.current?.style.setProperty('--tl-h', `${el.offsetHeight}px`));
+    tlSeen.current?.observe(el);
+  }, []);
   // Dragging the timeline's top edge resizes it between its top row and all its tracks; let go, it snaps to the
   // nearer one; a double click snaps to the other. Snapped down is simplified mode (no tracks), remembered in this browser.
   const [simple, setSimple] = useState(() => { try { return localStorage.getItem(SIMPLE_KEY) === '1'; } catch { return false; } });
@@ -338,7 +342,12 @@ export default function Editor({ ws, brand, ad, edit }) {
   const pickedLine = pickedClip?.lines && sel.li != null ? sel.li - target(pickedClip, 0).ref[2] : null; // its index as shown
   const picked = pickedClip && (sel.li == null || pickedClip.lines?.[pickedLine]) ? pickedClip : null;
   const line = picked && sel.li != null ? picked.lines[pickedLine] : null;
-  const tlSel = useMemo(() => (picked ? { id: picked.id, li: line ? pickedLine : null } : null), [picked?.id, line ? pickedLine : null]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Every picked block as shown: the first (the one the inspector reads), then the rest.
+  const picks = !picked ? [] : [{ c: picked, li: line ? pickedLine : null }, ...also.flatMap((a) => {
+    const c = clips.find((x) => x.id === a.id), li = c?.lines && a.li != null ? a.li - target(c, 0).ref[2] : null;
+    return c && (a.li == null || c.lines?.[li]) ? [{ c, li }] : [];
+  })];
+  const tlSel = picks.map((p) => `${p.c.id}:${p.li ?? ''}`).join('|');
   // A media clip's source length (s), for trims to stop at: the library's, else read from the file once.
   const lens = useRef(new Map());
   const lenOf = (c) => {
@@ -360,30 +369,49 @@ export default function Editor({ ws, brand, ad, edit }) {
     document.addEventListener('pointerdown', onDown);
     return () => document.removeEventListener('pointerdown', onDown);
   }, [holding]);
-  const select = (c, li) => { if (c) { lenOf(c); setMode('edit'); } setSel(c ? { id: c.id, li: li == null ? null : target(c, li).ref[2] } : null); };
+  // add (Shift or ⌘): one more picked, or one fewer when it already is.
+  const select = (c, li, add) => {
+    if (!c) return setSel(null);
+    lenOf(c);
+    setMode('edit');
+    const one = { id: c.id, li: li == null ? null : target(c, li).ref[2] }, same = (x) => x.id === one.id && x.li === one.li;
+    if (!add || !sel) { setAlso([]); return setSel(one); }
+    if (same(sel)) { setSel(also[0] || null); return setAlso(also.slice(1)); }
+    setAlso(also.some(same) ? also.filter((x) => !same(x)) : [...also, one]);
+  };
   // Change a clip's document: fn(doc, ref, shift) may return the ref to pick next (null: nothing).
   const change = (c, li, fn, from = cur) => {
     const tg = target(c, li), d = copyOf(tg.key, from), next = fn(d, tg.ref, tg.shift);
     commit(tg.key, d, from);
+    if (next !== undefined) setAlso([]);
     if (next !== undefined) setSel(next && { id: `${tg.key === 'own' ? 'o' : 'b'}.${next[0]}.${next[1]}`, li: next[2] ?? null });
   };
-  // The same on the picked block. live: only shown, from the documents as they were when the changing began (a
-  // number being dragged), until a call without it saves the last one.
+  const changeOne = (fn) => picked && change(picked, line ? pickedLine : null, fn); // the first picked block alone
+  // The same change to every picked block (last in its document first, so a deletion leaves the others in place).
+  // live: only shown, from the documents as they were when the changing began (a number being dragged), until a call
+  // without it saves the last one.
   const dragged = useRef(null);
   const changePicked = (fn, live) => {
     if (!picked) return;
-    const s = dragged.current ||= { from: cur, tg: target(picked, line ? pickedLine : null) };
-    if (!live) { dragged.current = null; return change(picked, line ? pickedLine : null, fn, s.from); }
-    const d = copyOf(s.tg.key, s.from);
-    fn(d, s.tg.ref, s.tg.shift);
-    show(s.tg.key, d, s.from);
+    const s = dragged.current ||= { from: cur, tgs: picks.map((p) => target(p.c, p.li)) };
+    const docs = {};
+    let next;
+    for (const tg of [...s.tgs].sort((a, b) => b.ref[0] - a.ref[0] || b.ref[1] - a.ref[1] || (b.ref[2] ?? 0) - (a.ref[2] ?? 0))) {
+      const r = fn(docs[tg.key] ||= copyOf(tg.key, s.from), tg.ref, tg.shift);
+      if (tg === s.tgs[0]) next = r;
+    }
+    if (live) return setRaws({ ...s.from, ...Object.fromEntries(Object.entries(docs).map(([key, doc]) => [key, { ...s.from[key], doc }])) });
+    dragged.current = null;
+    let from = s.from;
+    for (const [key, d] of Object.entries(docs)) { commit(key, d, from); from = { ...from, [key]: { ...from[key], text: `${JSON.stringify(d, null, 1)}\n`, doc: d } }; }
+    if (next !== undefined) setSel(s.tgs.length > 1 || !next ? null : { id: `${s.tgs[0].key === 'own' ? 'o' : 'b'}.${next[0]}.${next[1]}`, li: next[2] ?? null });
   };
   const block = line || picked;
   const tools = {
     // S: the picked clip, else every clip under the playhead but a sound bed, splits there.
     split: () => {
       const time = live.current.t;
-      if (picked && !line) return changePicked((d, ref, shift) => { ops.split(d, time + shift, ref); });
+      if (picked && !line) return changeOne((d, ref, shift) => { ops.split(d, time + shift, ref); });
       const w = where(time), d = copyOf(w.key);
       if (ops.split(d, time + w.shift)) commit(w.key, d);
     },
@@ -392,9 +420,9 @@ export default function Editor({ ws, brand, ad, edit }) {
       commit(w.key, d);
       setSel({ id: `${w.key === 'own' ? 'o' : 'b'}.${ti}.${ci}`, li: null });
     },
-    duplicate: () => !line && changePicked((d, ref) => ops.duplicate(d, ref)),
+    duplicate: () => !line && changeOne((d, ref) => ops.duplicate(d, ref)),
     remove: (ripple) => changePicked((d, ref) => { (ripple ? ops.rippleRemove : ops.remove)(d, ref); return null; }),
-    retime: (mode, by) => changePicked((d, ref) => { ops.retime(d, ref, mode, by, lenOf(picked)); }),
+    retime: (mode, by) => changeOne((d, ref) => { ops.retime(d, ref, mode, by, lenOf(picked)); }),
   };
 
   // Space plays, arrows step a frame (with Shift, a second); N writes a comment, ↑ / ↓ move between comments, A approves
@@ -458,7 +486,9 @@ export default function Editor({ ws, brand, ad, edit }) {
     const c = cur && clips.find((k) => k.id === boxes.findLast(([, q]) => inside(q))?.[0]);
     if (!c) return setSel(null);
     const li = c.lines ? c.lines.findIndex((l) => now >= l.at && now < l.end) : -1;
-    select(c, li < 0 ? null : li);
+    const add = e.shiftKey || e.metaKey;
+    select(c, li < 0 ? null : li, add);
+    if (add) return;
     if (c.type === 'custom' || typeof (c.x ?? 0) !== 'number' || typeof (c.y ?? 0) !== 'number') return; // placed by its layer, or keyframed
     const tg = target(c), d = copyOf(tg.key), others = clips.filter((k) => k !== c && k.type !== 'audio' && now >= k.at && now < k.end);
     const stops = (k, mid) => [mid, ...others.map((o) => o[k]).filter((v) => typeof v === 'number')];
@@ -563,9 +593,24 @@ export default function Editor({ ws, brand, ad, edit }) {
   const setEdit = ({ size, ...rest }) => changeEach((d, key) => {
     if (size) reframe(d, size);
     const main = key === (cur.base ? 'base' : 'own');
-    for (const [k, v] of Object.entries(rest)) { if (main) d[k] = v; else delete d[k]; }
+    for (const [k, v] of Object.entries(rest)) { if (main && v != null) d[k] = v; else delete d[k]; }
     return true;
   });
+  // The brand's saved text styles (inputs/text-styles.json): the inspector's first templates.
+  const [looks, setLooks] = useState([]);
+  useEffect(() => { fetch(fileUrl(ws, brand, 'inputs/text-styles.json'), { cache: 'no-store' }).then((r) => (r.ok ? r.json() : [])).then(setLooks, () => {}); }, [ws, brand]);
+  // The brand's font files, as paths from the ad's folder, and what the brand uses each for: the font picker lists them first.
+  const [brandFonts, setBrandFonts] = useState({}), [fontRoles, setFontRoles] = useState({});
+  useEffect(() => {
+    fetch(`${apiBase(ws, brand)}/fonts`).then((r) => (r.ok ? r.json() : {})).then((r) => { setBrandFonts(Object.fromEntries(Object.entries(r.fonts || {}).map(([k, p]) => [k, `../../${p}`]))); setFontRoles(r.roles || {}); }, () => {});
+  }, [ws, brand]);
+  // The brand's colors (the hex values in its inputs/DESIGN.md, in order): the swatches every color picker in the inspector opens with.
+  const [colors, setColors] = useState([]);
+  useEffect(() => {
+    fetch(fileUrl(ws, brand, 'inputs/DESIGN.md'), { cache: 'no-store' }).then((r) => (r.ok ? r.text() : ''))
+      .then((md) => setColors([...new Set((md.match(/#[0-9a-f]{6}\b/gi) || []).map((x) => x.toLowerCase()))].slice(0, 16)), () => {});
+  }, [ws, brand]);
+  const saveLooks = (next) => { setLooks(next); editApi(ws, brand)({ looks: next }).catch((er) => setError(er.message)); };
   // A frame tool: a mode (on: whether it is the current one) or an action; n: a count beside its icon.
   const chip = (Icon, label, keys, run, on, n) => <button type="button" className="chip" aria-label={label} title={`${label} (${keys})`} aria-pressed={on} disabled={!cur} onClick={run}><Icon />{n && <span className="ed__count">{n}</span>}</button>;
 
@@ -615,10 +660,12 @@ export default function Editor({ ws, brand, ad, edit }) {
           <Export ws={ws} brand={brand} ad={ad} plan={plan} exp={exp} api={api} onError={setError} />
         </div>
         {error && <p className="ed__error">{error}</p>}
+        <BrandColors.Provider value={colors}>
         {mode === 'edit' && (picked
-          ? <Inspector key={`${sel.id}.${sel.li}`} clip={picked} line={line} W={W} H={H} len={lenOf(picked)} fonts={Object.keys(doc.fonts || {})} edit={changePicked} name={line ? line.text : labelOf(picked)}
+          ? <Inspector key={`${sel.id}.${sel.li}`} clip={picked} line={line} W={W} H={H} len={lenOf(picked)} fonts={{ ...brandFonts, ...doc.fonts }} fontUrl={url} fontRoles={fontRoles} count={picks.length} looks={looks} onLooks={saveLooks} edit={changePicked} name={line ? line.text : labelOf(picked)}
             onSource={() => { pause(); setTrimId(picked.id); }} onDuplicate={line ? null : tools.duplicate} onDelete={tools.remove} />
           : doc && <Settings doc={doc} set={setEdit} />)}
+        </BrandColors.Provider>
         {mode === 'comment' && <Comments
           comments={comments} focus={focus} lit={lit} onLit={setLit} onPick={pick} onReview={review} onAction={commentAction} lead={(n) => <span className="ed-comment__time"><b className="ed-comment__num">{nums.get(n.id)}</b>{clock(n.t, true)}{n.to > n.t && `–${clock(n.to, true)}`}</span>}
           footer={(
@@ -636,11 +683,11 @@ export default function Editor({ ws, brand, ad, edit }) {
         />}
       </aside>
       {doc && (
-        <div className="ed__tl" ref={tlRef} data-drag={tlDrag ? (tlDrag.snap ? 'snap' : 'drag') : undefined} style={tlDrag ? { height: tlDrag.h } : undefined}>
+        <div className="ed__tl" ref={tlMount} data-drag={tlDrag ? (tlDrag.snap ? 'snap' : 'drag') : undefined} style={tlDrag ? { height: tlDrag.h } : undefined}>
         <div className="ed__edge" role="separator" aria-orientation="horizontal" aria-label="Drag or double-click to show or hide the tracks" onPointerDown={edgeDown} onPointerMove={edgeMove} onPointerUp={edgeUp} onPointerCancel={edgeUp} onDoubleClick={edgeToggle} />
         <Timeline doc={doc} t={t} comments={pending} nums={nums} url={url} lib={lib} lit={lit} range={range} onRange={pickRange} onHover={setLit} onSeek={seek} onPick={pick} off={off} onToggle={toggleTrack} onMute={muteTrack} playing={playing} sel={tlSel} onSelect={select}
-          onDrag={(c, li) => { const tg = target(c, li), d = copyOf(tg.key), len = lenOf(c); return (mode, by, loose) => ops.limit(d, tg.ref, mode, by, len, loose); }}
-          onRetime={(c, li, mode, by, to) => change(c, li, (d, ref) => { ops.retime(d, ref, mode, by, lenOf(c), to != null); return to == null ? undefined : ops.toTrack(d, ref, to); })}
+          onDrag={(c, li) => { const tg = target(c, li), d = copyOf(tg.key), len = lenOf(c); return Object.assign((mode, by, loose, stretch) => ops.limit(d, tg.ref, mode, by, len, loose, stretch), { rate: (mode, by) => ops.stretchRate(d, tg.ref, mode, by) }); }}
+          onRetime={(c, li, mode, by, to, stretch) => change(c, li, (d, ref) => { ops.retime(d, ref, mode, by, lenOf(c), to != null, stretch); return to == null ? undefined : ops.toTrack(d, ref, to); })}
           onSkim={(x) => draw(x ?? live.current.t)} onOrder={orderTrack} onRename={(name, to) => changeEach((d) => ops.renameTrack(d, name, to))} onRemove={(name) => { changeEach((d) => ops.removeTrack(d, name)); setSel(null); }}
           onOpen={(id) => { pause(); setTrimId(id); }} simple={simple && !tlDrag}>
           <button type="button" className="ed__play" onClick={() => (playing ? pause() : play())} aria-label={playing ? 'Pause' : 'Play'}>

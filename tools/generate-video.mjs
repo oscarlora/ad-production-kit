@@ -1,13 +1,12 @@
 #!/usr/bin/env node
 // generate-video.mjs — generate video ads on kie.ai (models: tools/lib/providers.mjs MODELS).
-// Each saved file gets a <stem>.gen.json sidecar.
+// Each saved file gets a gen/<stem>.gen.json sidecar.
 
 import { readFile } from 'node:fs/promises';
-import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { die, ffprobeJson, mimeOf, parseArgs, usage } from './lib/catalog.mjs';
 import {
-  blocked, brandRel, envHelp, errorText, gatewayClient, kieJob, kieUpload, kieUrls, logGatewayWarnings, pickModel, presignRef, runHelp, runOpts,
+  blocked, brandRel, envHelp, errorText, findSidecar, gatewayClient, kieJob, kieUpload, kieUrls, logGatewayWarnings, pickModel, presignRef, runHelp, runOpts,
   runProviders, saveResults, sunraJob, sunraUpload, times, uploadAll, userError, workspaceKeys, writeSidecars,
 } from './lib/providers.mjs';
 
@@ -139,8 +138,8 @@ function sunraInput(shape, o) {
 // The 1080p version of a Seedance 480p take, from the draft task in its sidecar.
 async function upgrade(args) {
   const clip = String(args.upgrade);
-  const side = clip.replace(/\.[^./]+$/, '') + '.gen.json';
-  const gen = existsSync(side) ? JSON.parse(await readFile(side, 'utf8')) : {};
+  const side = findSidecar(clip);
+  const gen = side ? JSON.parse(await readFile(side, 'utf8')) : {};
   if (!gen.draftTask) die(`${clip} has no Seedance draft to upgrade (only 480p seedance-2.5 takes made on kie or sunra have one): make a fresh 1080p take instead.`);
   if (Date.now() - Date.parse(gen.at) > 7 * 864e5) die(`${clip}'s draft is over 7 days old: make a fresh 1080p take instead.`);
   const out = String(args.out || clip.replace(/(\.[^./]+)?$/, '-1080p.mp4'));

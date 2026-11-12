@@ -59,7 +59,8 @@ workspace's R2 bucket when it has one (see Operating principles).
       _custom/           # the workspace's own skills and tools (extensions or changes to ADPK); load them when working it
       <Brand>/
         inputs/          # research-brand's files: brand.md, products/<product>.md (+ -personas, -angles), customers.md,
-                         # competitors.md, ads.md, formats.md, DESIGN.md, products.json · memory.md, uploads.json, brief-templates.md
+                         # competitors.md, ads.md, formats.md, DESIGN.md, products.json · memory.md, uploads.json, brief-templates.md,
+                         # text-styles.json (the text styles saved in Studio's editor)
           sources/       # what research collected: reviews.csv, pages/, ads/, posts.md, competitors/, files/
           media/         # the searchable media library (catalog-media)
         outputs/         # one folder per ad (naming: write-prompt) · json/ records (tools/record-ad.mjs) · index.md · batches/

@@ -21,9 +21,11 @@ const STATE = { done: 'Done', current: 'Current', todo: 'Not started' };
 
 function Lightbox({ ws, brand, images, index, onStep, onClose }) {
   const f = images[index];
+  const src = fileUrl(ws, brand, f.p, f.v);
+  const [loaded, setLoaded] = useState({ src: '', ratio: 0 }); // the shown image's width / height, for the guides
   return (
-    <ViewerShell onStep={onStep} onClose={onClose} nav={images.length > 1} title={baseName(f.name)}>
-      <img src={fileUrl(ws, brand, f.p, f.v)} alt={f.name} />
+    <ViewerShell onStep={onStep} onClose={onClose} nav={images.length > 1} title={baseName(f.name)} ratio={loaded.src === src ? loaded.ratio : 0}>
+      <img src={src} alt={f.name} onLoad={(e) => setLoaded({ src, ratio: e.target.naturalWidth / e.target.naturalHeight })} />
     </ViewerShell>
   );
 }

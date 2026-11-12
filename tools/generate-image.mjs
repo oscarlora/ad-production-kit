@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // generate-image.mjs — generate image ads on kie.ai (models: tools/lib/providers.mjs MODELS).
-// Saved files are stripped of metadata (C2PA, EXIF, XMP) and get a <stem>.gen.json sidecar.
+// Saved files are stripped of metadata (C2PA, EXIF, XMP) and get a gen/<stem>.gen.json sidecar.
 
 import { readFile, writeFile } from 'node:fs/promises';
 import { existsSync, mkdtempSync, rmSync } from 'node:fs';

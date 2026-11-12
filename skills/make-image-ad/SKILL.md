@@ -54,7 +54,8 @@ The **concept** is product + persona + angle + format. Then copy, then design.
     so the ad's text and product stay pixel-identical. A flat background that code can extend without hurting the
     design is extended by code: that bar takes `plain` as its text, and when both do, `--smear` instead (no
     generation); only a bar that must continue part of the design (a photo, an illustration, a texture) goes to AI. Continue only what the 4:5 already shows (background, the rest of
-    a head it shows); a body part it crops out (the face above a neck) gets invented and comes out wrong. On approval it
+    a head it shows); a body part it crops out (the face above a neck) gets invented and comes out wrong, and one
+    that fades into the background at the edge (an arm into black) stays faded: that bar is `plain`. On approval it
     goes to `final/` keeping the 4:5's V.
 11. **Meta copy** — when the ad runs on Meta, its headline and primary text (**write-meta-copy**),
     before upload (**upload-ads**).

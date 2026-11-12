@@ -138,6 +138,14 @@ export function decideScene(dir, { scene, ticks, decision, text }) {
   return saveComment(dir, { file: 'footage.json', quote: key, text: `${decision === 'approved' ? 'Approved' : 'Reshoot'}${said ? `: ${said}` : ''}` });
 }
 
+// The brand's saved text styles (the editor's templates): inputs/text-styles.json, a list of looks (a text style's
+// font, weight, colors, stroke, background and shadow).
+export function saveLooks(inputs, looks) {
+  if (!Array.isArray(looks) || looks.length > 48 || looks.some((k) => !k || typeof k !== 'object' || Array.isArray(k))) throw new Error('bad styles');
+  writeFileSync(join(inputs, 'text-styles.json'), JSON.stringify(looks, null, 1) + '\n');
+  return { ok: true };
+}
+
 // Studio's manual edits (made in the browser: studio/engine/ops.js) and their undo: { file, text, expect } writes text
 // when the edit document still reads expect, so a change made on disk since is never overwritten.
 export async function saveEdit(dir, { file, text, expect }) {
@@ -150,7 +158,7 @@ export async function saveEdit(dir, { file, text, expect }) {
   return { ok: true };
 }
 
-// An image ad's Approve / Unapprove: moves a render (with its same-stem prompt and .gen.json) between drafts/ and final/,
+// An image ad's Approve / Unapprove: moves a render (with its same-stem prompt and its sidecar) between drafts/ and final/,
 // numbering it as the next V there (finals stay V1, V2, … with no gaps; a Story keeps its 4:5's V), repoints the record and the prompt's File name,
 // sets the record's status (approved while final/ holds a render, else pending-review) and refreshes the index.
 // Rebuild the brand's ads index (tools/record-ad.mjs), which also copies each ad's meta.md into its record.
@@ -174,18 +182,29 @@ export function moveRender(dir, file) {
     const order = [...new Set(left.map(num))].sort((x, y) => x - y);
     left.forEach((n) => renames.push([`final/${n}`, `final/${setNum(n, order.indexOf(num(n)) + 1)}`]));
   }
-  // Through a temporary name first, so a renumbering never lands on a file not yet moved.
+  // Through a temporary name first, so a renumbering never lands on a file not yet moved. The sidecar goes to the new
+  // folder's gen/ (sidecarOf in tools/lib/providers.mjs), from there or from beside the render.
   const moves = renames.filter(([x, y]) => x !== y).map(([x, y], i) => {
     const [d, s0] = x.split('/'), files = readdirSync(join(dir, d)).filter((n) => n.startsWith(`${s0}.`) && /^([a-z]+|gen\.json)$/i.test(n.slice(s0.length + 1)));
     files.forEach((n) => renameSync(join(dir, d, n), join(dir, d, `.moving${i}${n.slice(s0.length)}`)));
-    return { x, y, d, files: files.map((n) => n.slice(s0.length)), i };
+    const side = join(dir, d, 'gen', `${s0}.gen.json`), hasSide = existsSync(side);
+    if (hasSide) renameSync(side, join(dir, d, 'gen', `.moving${i}.gen.json`));
+    return { x, y, d, files: files.map((n) => n.slice(s0.length)), hasSide, i };
   });
-  for (const { x, y, d, files, i } of moves) {
+  for (const { x, y, d, files, hasSide, i } of moves) {
     const [d2, s1] = y.split('/'), s0 = x.split('/')[1];
-    for (const ext of files) {
+    const sides = [...files.filter((e) => e === '.gen.json').map(() => join(dir, d, `.moving${i}.gen.json`)), ...(hasSide ? [join(dir, d, 'gen', `.moving${i}.gen.json`)] : [])];
+    for (const ext of files.filter((e) => e !== '.gen.json')) {
       const dest = join(dir, d2, `${s1}${ext}`);
       renameSync(join(dir, d, `.moving${i}${ext}`), dest);
-      if (/\.(txt|gen\.json)$/.test(ext)) writeFileSync(dest, readFileSync(dest, 'utf8').split(s0).join(s1)); // its File name line
+      if (ext === '.txt') writeFileSync(dest, readFileSync(dest, 'utf8').split(s0).join(s1)); // its File name line
+    }
+    if (sides.length) {
+      const dest = join(dir, d2, 'gen', `${s1}.gen.json`);
+      mkdirSync(join(dir, d2, 'gen'), { recursive: true });
+      renameSync(sides.at(-1), dest); // the gen/ one wins over an older one beside the render
+      sides.slice(0, -1).forEach((p) => rmSync(p));
+      writeFileSync(dest, readFileSync(dest, 'utf8').split(s0).join(s1));
     }
   }
   const folder = basename(dir), outputs = resolve(dir, '..');

@@ -115,6 +115,7 @@ and nav buttons. A dashed border means empty or a draft.
 - **Thread** `.ft-thread`: chat messages, `--radius` with the tail corner `--radius-sm`: the AI and the agent on the
   left on `--bg-subtle`, the user on the right on `--fill-strong`; a `--faint` Comment link beside the latest.
 - **Input / select** `.input` `.select` `.field`: 32px, 1px `--line` border that darkens on hover.
+- **Font picker** `.font`: a field like a number's with a caret; it opens a floating list (`--shadow-float`) under it, or over it when there's more room: a search field, then Brand fonts (each with its use in `--muted` on the right) and Google Fonts, every name in its own font, the current one ticked, the highlighted one on `--fill`. Arrows or the moving pointer preview a font on the frame; Enter or a click keeps it, Esc or a click outside puts the first back.
 - **Badge** `.badge`: status dot and word. **Pill mark** `.pill-mark`: a `--fill` tag.
 - **Media card** (Board and Media): a media frame at the render's own ratio; name, ID or status show
   on hover over a dark fade. Media cards add select and action buttons on hover.
@@ -140,7 +141,7 @@ and nav buttons. A dashed border means empty or a draft.
   playhead (Add text, Split), a hairline, the guides button. The mode switches the frame and the side together. **Select**: a click on the frame
   picks the top clip there and the side shows its inspector.
   **Comment**: the frame marks spots and the side lists the comments. Picking a clip or a comment anywhere switches to
-  its mode (V and C too). A click on nothing lets go of the picked block. A click picks a timeline block (a dark ring); its
+  its mode (V and C too). A click on nothing lets go of the picked block; Shift or ⌘ click picks several, and the inspector's changes then go to all of them. A click picks a timeline block (a dark ring); its
   middle drags to move (onto another track's row, which tints, or the ruler's for a new top track), its edges to trim (never over another clip on its track: it lands in the nearest free stretch; trimming a video or sound in a sequence moves what follows), snapping to block edges and the playhead; a picked clip is outlined on the frame and drags there
   to place it, its center snapping to the frame's and to other clips', a hairline guide showing each. The pointer over the timeline skims: the preview shows that moment under a faint `--muted` line, the playhead staying put (a click on an empty lane moves it there). A track's name drags up or down to reorder the tracks, a 2px `--fg` line marking where it lands; hovered, a bin at its end deletes the track; a double click types over the name. Pinch or ⌘-scroll zooms the timeline (+ / -, Shift+Z to fit) from the whole edit down to single frames, the ruler's labels and ticks following (a mark off a whole second reads as its frame, "12f"), which then scrolls under the track names.
   Every change shows at once and undoes with ⌘Z.
@@ -148,8 +149,8 @@ and nav buttons. A dashed border means empty or a draft.
   frame rate, loudness); else the picked block's name with Duplicate and Delete, then one hairline-divided section per
   setting (Text, Timing, Layout, Style, Media, Volume), two fields a row; the optional ones (a text's Stroke,
   Background and Shadow; Fade, Animation, Transition) are a muted title with a + that adds them, then a − that takes
-  them away. A color is a `.num` with a swatch that opens the picker and its hex to type; the font is a `.num` that searches Google Fonts' families as it is typed. A number is one field `.num`, which drags sideways anywhere on it to change
-  the value live (a click types it): its label, the value right-aligned, a faint unit; a keyframed one reads "keyed".
+  them away. Style opens with its templates, a row of small black tiles each drawing "Aa" in a look (the brand's saved styles first, an × on hover removing one); a click applies one. A picked text whose look is new leads the row as a dashed Save tile. A color is a `.num` with its hex to type and a swatch that opens a small floating row: the brand's colors (from its DESIGN.md), then Custom for the browser's picker; the font is a `.num` that searches Google Fonts' families as it is typed. A number is one field `.num`, which drags sideways anywhere on it to change
+  the value live (a click types it): its label, the value right-aligned, a faint unit; a keyframed one reads "keyed"; one off its default has its label in `--fg`, and a double click on the label resets it.
 - **Trim panel** `.trim` (a double click on a media clip, Enter, or its inspector's source button): a floating panel above the editor's timeline: the clip's
   picture, its whole source as two strips (frames, waveform), and the part it plays as a dark-edged selection over
   both to drag (edges, or the middle to slide); letting go plays the new cut.

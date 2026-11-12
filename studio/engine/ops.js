@@ -14,10 +14,9 @@ function group(doc, ref) {
   return !c.src || !c.name ? [c] : [c, ...doc.tracks.flatMap((tr, i) => (i === ref[0] ? [] : (tr.clips || []).filter((x) => x.src && x.name === c.name && same(x.at ?? 0, at))))];
 }
 const shift = (clips, d) => mapTimes({ tracks: [{ clips }] }, (t) => r3(t + d));
-// A video or sound with another clip on its track starting where it ends / ending where it starts: a sequence, whose
-// clips stay touching. (Text and graphics over it just stop at their neighbours.)
+// A video or sound with another clip on its track starting where it ends: a sequence, whose clips stay touching when
+// its speed or source changes. (Text and graphics over it just stop at their neighbours.)
 const followed = (doc, ref, c) => timed(c) && doc.tracks[ref[0]].clips.some((x) => x !== c && same(x.at ?? 0, endOf(c)));
-const led = (doc, ref, c) => timed(c) && doc.tracks[ref[0]].clips.some((x) => x !== c && same(endOf(x) ?? -1, c.at ?? 0));
 
 // The shift nearest d that leaves each clip in g clear of the others on its track, and none before 0: a track plays
 // one clip at a time.
@@ -30,35 +29,44 @@ function clear(doc, g, d) {
 // Where the next clip on its track starts, and the one before it ends.
 const nextAt = (doc, ref, c) => Math.min(Infinity, ...doc.tracks[ref[0]].clips.filter((x) => x !== c && !x.lines && (x.at ?? 0) >= endOf(c) - 1e-3).map((x) => x.at ?? 0));
 const prevEnd = (doc, ref, c) => Math.max(0, ...doc.tracks[ref[0]].clips.filter((x) => x !== c && !x.lines && endOf(x) <= (c.at ?? 0) + 1e-3).map(endOf));
+const nextOf = (doc, ref) => { const c = clipOf(doc, ref); return doc.tracks[ref[0]].clips.find((x) => x !== c && !x.lines && same(x.at ?? 0, endOf(c))); };
 
-// How far (s) a move, or a start or end edge, can go: a clip keeps MIN, stays inside its source (len s, when known)
-// and clear of the other clips on its track (loose: it is leaving for another track); a caption line stays between
-// its neighbours.
-export function limit(doc, ref, mode, d, len, loose) {
+// How far (s) a move, or a start or end edge, can go: a clip keeps MIN, stays clear of the other clips on its track
+// (loose: it is leaving for another track) and, trimmed, inside its source (len s, when known); stretched (an edge
+// changing its speed, `stretch`), between 0.25× and 4×. A roll moves the cut to the clip starting where it ends: both
+// keep MIN and stay inside their sources. A caption line stays between its neighbours.
+export const RATES = [0.25, 4];
+export function limit(doc, ref, mode, d, len, loose, stretch) {
   if (ref.length === 3) {
     const { lines } = clipOf(doc, ref), l = lines[ref[2]], lo = (lines[ref[2] - 1]?.end ?? 0) - l.at, hi = (lines[ref[2] + 1]?.at ?? Infinity) - l.end;
     return mode === 'start' ? clamp(d, lo, l.end - l.at - MIN) : mode === 'end' ? clamp(d, MIN - (l.end - l.at), hi) : clamp(d, lo, hi);
   }
   const c = clipOf(doc, ref), at = c.at ?? 0, dur = endOf(c) - at, rate = c.rate ?? 1;
+  if (mode === 'roll') { // the cut between it and the clip starting where it ends
+    const n = nextOf(doc, ref), nDur = endOf(n) - (n.at ?? 0), nRate = n.rate ?? 1;
+    return clamp(d, Math.max(MIN - dur, timed(n) ? -(n.in ?? 0) / nRate : -Infinity), Math.min(nDur - MIN, timed(c) && len ? (len - (c.in ?? 0)) / rate - dur : Infinity));
+  }
   if (mode === 'move') return loose ? Math.max(d, -Math.min(...group(doc, ref).map((x) => x.at ?? 0))) : clear(doc, group(doc, ref), d);
-  if (mode === 'end') return clamp(d, MIN - dur, Math.min(timed(c) && len ? (len - (c.in ?? 0)) / rate - dur : Infinity, followed(doc, ref, c) ? Infinity : nextAt(doc, ref, c) - endOf(c)));
-  return clamp(d, Math.max(timed(c) ? -(c.in ?? 0) / rate : -Infinity, led(doc, ref, c) ? -Infinity : prevEnd(doc, ref, c) - at), dur - MIN);
+  const sp = stretch && timed(c), grow = sp ? [(dur * rate) / RATES[1] - dur, (dur * rate) / RATES[0] - dur] : [-Infinity, Infinity]; // how much longer it may get
+  if (mode === 'end') return clamp(d, Math.max(MIN - dur, grow[0]), Math.min(!sp && timed(c) && len ? (len - (c.in ?? 0)) / rate - dur : Infinity, nextAt(doc, ref, c) - endOf(c), grow[1]));
+  return clamp(d, Math.max(!sp && timed(c) ? -(c.in ?? 0) / rate : -Infinity, prevEnd(doc, ref, c) - at, -grow[1]), Math.min(dur - MIN, -grow[0]));
 }
 
-// A clip's (and its link's) new source start, start and end. In a sequence (followed), everything after its old end
-// moves with the new one.
-function respan(doc, ref, { in: inS, at, end }) {
-  const c = clipOf(doc, ref), g = group(doc, ref), oldEnd = endOf(c), ripple = followed(doc, ref, c);
+// A clip's (and its link's) new source start, start and end; in a sequence (followed) with `ripple`, everything after
+// its old end moves with the new one.
+function respan(doc, ref, { in: inS, at, end }, ripple = followed(doc, ref, clipOf(doc, ref))) {
+  const c = clipOf(doc, ref), g = group(doc, ref), oldEnd = endOf(c);
   if (!ripple) end = Math.min(end, nextAt(doc, ref, c)); // never over the next clip
   const delta = r3(end - oldEnd);
   for (const x of g) { if (inS != null) x.in = r3(inS); if (at != null) x.at = r3(at); x.end = r3(end); delete x.dur; }
   if (ripple && delta) mapTimes(doc, (t) => (t >= oldEnd - 1e-3 ? r3(t + delta) : delta < 0 && t > end ? r3(end) : t), new Set(g));
 }
 
-// Move a clip or line (mode 'move'), or its 'start' or 'end' edge, by d seconds. A start edge with a clip ending on
-// it stays put: the clip gives up its head and what follows moves up.
-export function retime(doc, ref, mode, d, len, loose) {
-  d = limit(doc, ref, mode, d, len, loose);
+// Move a clip or line (mode 'move'), its 'start' or 'end' edge, or the cut after it ('roll': its end and the next clip's
+// start move together, each playing more or less of its source), by d seconds. An edge trims the clip, leaving any
+// gap open; with `stretch`, a media clip keeps the same stretch of its source and its speed changes to fit.
+export function retime(doc, ref, mode, d, len, loose, stretch) {
+  d = limit(doc, ref, mode, d, len, loose, stretch);
   const x = get(doc, ref);
   if (ref.length === 3) {
     if (mode !== 'end') x.at = r3(x.at + d);
@@ -67,11 +75,23 @@ export function retime(doc, ref, mode, d, len, loose) {
     return;
   }
   if (mode === 'move') return shift(group(doc, ref), d);
-  const at = x.at ?? 0, end = endOf(x);
-  if (mode === 'end') return respan(doc, ref, { end: end + d });
-  const inS = timed(x) ? (x.in ?? 0) + d * (x.rate ?? 1) : null;
-  respan(doc, ref, led(doc, ref, x) ? { in: inS, end: end - d } : { in: inS, at: at + d, end });
+  const at = x.at ?? 0, end = endOf(x), dur = end - at;
+  if (mode === 'roll') { // the next clip first, so this one's end never runs over it
+    const n = nextOf(doc, ref), nRef = [ref[0], doc.tracks[ref[0]].clips.indexOf(n)];
+    for (const y of group(doc, nRef)) { if (timed(y)) y.in = r3((y.in ?? 0) + d * (y.rate ?? 1)); y.at = r3((y.at ?? 0) + d); }
+    return respan(doc, ref, { end: end + d }, false);
+  }
+  if (stretch && timed(x)) {
+    const rate = Math.round((((x.rate ?? 1) * dur) / (dur + (mode === 'end' ? d : -d))) * 1000) / 1000;
+    for (const y of group(doc, ref)) y.rate = rate;
+    return respan(doc, ref, mode === 'end' ? { end: end + d } : { at: at + d, end }, false);
+  }
+  if (mode === 'end') return respan(doc, ref, { end: end + d }, false);
+  respan(doc, ref, { in: timed(x) ? (x.in ?? 0) + d * (x.rate ?? 1) : null, at: at + d, end }, false);
 }
+
+// The speed a stretch of d on that edge would give the clip (for the timeline to show while dragging).
+export const stretchRate = (doc, ref, mode, d) => { const c = clipOf(doc, ref), dur = endOf(c) - (c.at ?? 0); return ((c.rate ?? 1) * dur) / (dur + (mode === 'end' ? d : -d)); };
 
 // The part of its source a media clip plays (the trim panel): from inS, for dur seconds of timeline.
 export const source = (doc, ref, inS, dur) => respan(doc, ref, { in: inS, end: (clipOf(doc, ref).at ?? 0) + dur });
@@ -168,6 +188,15 @@ export function removeTrack(doc, name) {
   const i = (doc.tracks || []).findIndex((x, k) => (x.name || `Track ${k + 1}`) === name);
   if (i >= 0) doc.tracks.splice(i, 1);
   return i >= 0;
+}
+
+// A text's look: what a style template sets. Its size, width, line height and anchor stay the clip's own.
+export const LOOK = ['font', 'weight', 'italic', 'color', 'accent', 'case', 'letterSpacing', 'stroke', 'strokeWidth', 'background', 'shadow'];
+// Give a text or captions clip a look (a template's, or another text's), in place of its own.
+export function restyle(doc, ref, look) {
+  const c = clipOf(doc, ref);
+  if (!['text', 'captions'].includes(clipType(c))) return;
+  c.style = { ...Object.fromEntries(Object.entries(c.style || {}).filter(([k]) => !LOOK.includes(k))), ...structuredClone(look) };
 }
 
 // Set a property of a clip or line (path: 'volume', 'style.size'); null clears it.

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // generate-music.mjs — Suno on kie.ai (or sunra.ai): an instrumental bed by default, or a song
-// (--vocals, --lyrics). Each kie task returns two takes; each saved file gets a <stem>.gen.json
+// (--vocals, --lyrics). Each kie task returns two takes; each saved file gets a gen/<stem>.gen.json
 // sidecar. Prompt craft: skills/add-music. Exports runSuno, which generate-sfx.mjs uses.
 
 import { readFile, writeFile } from 'node:fs/promises';

@@ -1,15 +1,17 @@
 'use client';
 // The picked clip's (or caption line's) settings, one divided section each: its text, timing, place on the frame,
-// a text's look (font, color, and its stroke, background and shadow), media (how it fills its box, speed, the part
+// a text's look (templates to pick from, then font, color, and its stroke, background and shadow), media (how it fills its box, speed, the part
 // of its source it plays: onSource opens the trim panel), volume, and the optional ones (fades, how it comes in and
 // out, its transition), closed until their + adds them; their − takes them away. A number's field drags
 // sideways (Shift: ten times the step), showing live and saving once on release; typed, it saves when
-// the typing pauses or the field is left. A keyframed value is the agent's, shown as "keyed".
+// the typing pauses or the field is left. A value off its default lights its name up, and a double click on the
+// name resets it. A keyframed value is the agent's, shown as "keyed".
 // edit(fn, live): fn(doc, ref, shift) changes the clip's document (engine/ops.js): ref is the clip, or the line when
-// one is picked, shift how far the document's clock runs ahead of the timeline's; live only previews.
+// one is picked, shift how far the document's clock runs ahead of the timeline's; live only previews. With several
+// blocks picked (count), it runs on each.
 // With nothing picked, Settings shows the edit's own: its frame size, background, frame rate and loudness.
-import { useEffect, useRef, useState } from 'react';
-import { endOf, keyed } from '../../engine/doc.js';
+import { createContext, useContext, useEffect, useRef, useState } from 'react';
+import { clipType, endOf, keyed } from '../../engine/doc.js';
 import * as ops from '../../engine/ops.js';
 import { getJson } from '../../lib/client/api.js';
 import { clock } from '../../lib/client/format.js';
@@ -19,6 +21,25 @@ const TRANSITIONS = ['cut', 'fade', 'dip', 'slide', 'push', 'wipe', 'zoom', 'blu
 const ANIMS = ['', 'fade', 'pop', 'bounce', 'zoom', 'blur', 'slide-up', 'slide-down', 'slide-left', 'slide-right'];
 const FITS = [['contain', 'Fit'], ['cover', 'Fill'], ['fill', 'Stretch']];
 const r2 = (x) => Math.round(x * 100) / 100;
+// Ready-made looks for a text or the captions, after the ones the brand saved.
+const SOFT = { color: '#000000', opacity: 0.5, blur: 8, y: 2 };
+const LOOKS = [
+  { font: 'Inter', weight: 600, color: '#FFFFFF', shadow: SOFT },
+  { font: 'Montserrat', weight: 800, case: 'upper', color: '#FFFFFF', stroke: '#000000', strokeWidth: 8 },
+  { font: 'Inter', weight: 700, color: '#FFFFFF', background: { color: '#000000', padX: 28, padY: 16, radius: 12 } },
+  { font: 'Inter', weight: 700, color: '#111111', background: { color: '#FFFFFF', padX: 28, padY: 16, radius: 12 } },
+  { font: 'Anton', weight: 400, case: 'upper', color: '#FFE500', stroke: '#000000', strokeWidth: 10 },
+  { font: 'Playfair Display', weight: 600, italic: true, color: '#FFFFFF', shadow: SOFT },
+];
+const LOOK_FONTS = 'https://fonts.googleapis.com/css2?family=Anton&family=Montserrat:wght@800&family=Playfair+Display:ital,wght@1,600&display=swap';
+// A look drawn small in CSS, close to how the engine draws it.
+const lookCss = (k) => ({
+  fontFamily: `"${k.font || 'Inter'}", sans-serif`, fontWeight: k.weight || 400, fontStyle: k.italic ? 'italic' : undefined,
+  color: typeof k.color === 'string' ? k.color : '#FFFFFF', textTransform: k.case === 'upper' ? 'uppercase' : k.case === 'lower' ? 'lowercase' : undefined,
+  WebkitTextStroke: k.stroke && k.strokeWidth ? `${Math.min(3, k.strokeWidth / 4)}px ${k.stroke}` : undefined, paintOrder: 'stroke fill',
+  background: k.background ? k.background.color || '#000000' : undefined, textShadow: k.shadow ? `0 1px 3px ${k.shadow.color || '#000000'}` : undefined,
+});
+
 
 // Keeps what is being typed and saves it 400 ms after the last key, or when the field is left.
 function useTyped(value, onSave) {
@@ -38,6 +59,7 @@ function useTyped(value, onSave) {
 // A number with its label and unit in one field. v is shown times `mul` (a percent), dflt when unset.
 function Num({ k, unit, v, dflt, mul = 1, step = 1, min = -Infinity, max = Infinity, onSet }) {
   const fit = (n) => Math.min(max, Math.max(min, n));
+  const changed = dflt !== undefined && v != null && !keyed(v) && v !== dflt; // off its default: its name lights up, and a double click on it resets it
   const t = useTyped(keyed(v) ? 'keyed' : r2((v ?? dflt) * mul), (s) => { const n = parseFloat(s); if (Number.isFinite(n)) onSet(fit(n) / mul); });
   // Anywhere on the field: a drag changes the value, a click goes on to type it (as does a field already being typed in).
   const scrub = (e) => {
@@ -66,8 +88,8 @@ function Num({ k, unit, v, dflt, mul = 1, step = 1, min = -Infinity, max = Infin
     window.addEventListener('pointerup', onUp);
   };
   return (
-    <label className="num" data-off={keyed(v) || undefined} onMouseDown={scrub} title={keyed(v) ? undefined : 'Drag to change, click to type'}>
-      <span className="num__k">{k}</span>
+    <label className="num" data-off={keyed(v) || undefined} data-set={changed || undefined} onMouseDown={scrub} title={keyed(v) ? undefined : `Drag to change, click to type${changed ? ', double-click its name to reset' : ''}`}>
+      <span className="num__k" onDoubleClick={changed ? () => { t.held.current = false; onSet(null); document.activeElement?.blur(); } : undefined}>{k}</span>
       <input {...t.props} inputMode="decimal" disabled={keyed(v)} onKeyDown={(e) => { if (e.key === 'Escape' || e.key === 'Enter') e.currentTarget.blur(); }} />
       {unit && <span className="num__u">{unit}</span>}
     </label>
@@ -86,32 +108,122 @@ const Pick = ({ k, value, options, none = 'none', onSave }) => (
   </label>
 );
 
-// A color: its swatch opens the picker, its hex types.
+// The brand's colors (hex), which every color's picker offers first. The editor provides them.
+export const BrandColors = createContext([]);
+
+// A color: its swatch opens the brand's colors to pick from, with Custom for any other (the browser's picker, which
+// the swatch opens directly when the brand has none); its hex types. A double click on its name resets it.
 function Color({ k, value, dflt, onSave }) {
+  const brand = useContext(BrandColors), [open, setOpen] = useState(false), box = useRef(null);
   const t = useTyped(typeof (value ?? dflt) === 'string' ? value ?? dflt : 'keyed', (v) => { if (/^#[0-9a-f]{6}$/i.test(v)) onSave(v); });
+  const hex = /^#[0-9a-f]{6}$/i.test(t.text) ? t.text : '#000000';
+  useEffect(() => {
+    if (!open) return undefined;
+    const close = (e) => { if (e.type === 'keydown' ? e.key === 'Escape' : !box.current?.contains(e.target)) setOpen(false); };
+    document.addEventListener('pointerdown', close);
+    document.addEventListener('keydown', close);
+    return () => { document.removeEventListener('pointerdown', close); document.removeEventListener('keydown', close); };
+  }, [open]);
+  const native = <input type="color" className="num__swatch" value={hex} onChange={t.props.onChange} />;
   return (
-    <label className="num" data-off={t.text === 'keyed' || undefined}>
-      <span className="num__k">{k}</span>
-      <input type="color" className="num__swatch" value={/^#[0-9a-f]{6}$/i.test(t.text) ? t.text : '#000000'} onChange={t.props.onChange} />
+    <label className="num" ref={box} data-off={t.text === 'keyed' || undefined} data-set={(dflt && typeof value === 'string' && value.toLowerCase() !== dflt.toLowerCase()) || undefined}>
+      <span className="num__k" title={dflt ? 'Double-click to reset' : undefined} onDoubleClick={dflt ? () => { onSave(null); document.activeElement?.blur(); } : undefined}>{k}</span>
+      {brand.length ? <button type="button" className="num__swatch" style={{ background: hex }} aria-label={`Pick ${k.toLowerCase()}`} aria-expanded={open} onClick={(e) => { e.preventDefault(); setOpen(!open); }} /> : native}
       <input {...t.props} spellCheck={false} onKeyDown={(e) => { if (e.key === 'Escape' || e.key === 'Enter') e.currentTarget.blur(); }} />
+      {open && (
+        <span className="num__colors" onClick={(e) => { if (e.target.type !== 'color') e.preventDefault(); }}>
+          {brand.map((x) => <button key={x} type="button" className="num__swatch" style={{ background: x }} title={x} aria-label={x} aria-pressed={x.toLowerCase() === hex.toLowerCase()} onClick={() => { t.setText(x); t.save(x); setOpen(false); }} />)}
+          <span className="num__custom">{native}Custom</span>
+        </span>
+      )}
     </label>
   );
 }
 
-// A font: type to search Google Fonts' families (and the edit's own, `own`); it saves once the name is one of them.
-let families = null; // read once for the whole app
-function Font({ value, own, onSave }) {
-  const [list, setList] = useState([]);
+// A font: a field showing the font, opening a list under it: a search box, then the edit's and the brand's own fonts
+// (`own`: family -> file, shown through `url`; a brand font is marked with its use, `roles`), then Google Fonts' families, most used first, each name in its own font.
+// Arrows or the moving pointer preview a font live on the frame (a list opening under a still pointer previews nothing); Enter or a click keeps it, Esc or a click outside puts the
+// first one back.
+let families = null; // Google's, read once for the whole app
+const shown = new Set(); // families whose name has been drawn in their own font
+function showFont(fam, file) {
+  if (shown.has(fam)) return;
+  shown.add(fam);
+  if (file) { new FontFace(fam, `url("${file}")`).load().then((f) => document.fonts.add(f), () => {}); return; }
+  const q = encodeURIComponent(fam).replace(/%20/g, '+');
+  document.head.append(Object.assign(document.createElement('link'), { rel: 'stylesheet', href: `https://fonts.googleapis.com/css2?family=${q}&text=${encodeURIComponent(fam)}&display=swap` }));
+}
+const MAX_SHOWN = 80; // Google families listed at once; typing finds the rest
+function Font({ value, own, roles = {}, url, onSave }) {
+  const [list, setList] = useState([]), [open, setOpen] = useState(null), [q, setQ] = useState(''), [hi, setHi] = useState(0); // open: where the list floats
+  const box = useRef(null), from = useRef(value), listEl = useRef(null);
   useEffect(() => { (families ||= getJson('/api/fonts').then((r) => r.fonts).catch(() => { families = null; return []; })).then(setList); }, []);
-  const all = [...own, ...list];
-  const known = (v) => all.find((x) => x.toLowerCase() === v.trim().toLowerCase());
-  const t = useTyped(value, (v) => { const f = known(v); if (f) onSave(f); });
+  const mine = Object.keys(own).sort((a, b) => !roles[a] - !roles[b]), needle = q.trim().toLowerCase();
+  const hit = (f) => !needle || `${f} ${roles[f] || ''}`.toLowerCase().includes(needle); // a brand font by its use too ("headline")
+  const google = list.filter((f) => !own[f] && hit(f)).slice(0, MAX_SHOWN);
+  if (!own[value] && !google.includes(value) && list.includes(value) && hit(value)) google.unshift(value); // the current font always listed
+  const groups = [['Brand fonts', mine.filter(hit)], ['Google Fonts', google]].filter(([, fs]) => fs.length);
+  const opts = groups.flatMap(([, fs]) => fs);
+  const shut = () => { setOpen(null); setQ(''); if (value !== from.current) onSave(from.current, false); }; // closed without a pick: the first font back
+  const preview = (f) => { if (f && f !== value) onSave(f, true); };
+  const keep = (f) => { if (f && (f !== from.current || value !== from.current)) onSave(f, false); setOpen(null); setQ(''); };
+  // Floats over the panel and the timeline: under the field, or over it when there's more room there.
+  const show = () => {
+    const r = box.current.getBoundingClientRect(), floor = document.querySelector('.ed__tl')?.getBoundingClientRect().top ?? innerHeight;
+    const below = floor - r.bottom - 12, above = r.top - 60, up = below < 280 && above > below;
+    from.current = value;
+    const width = Math.max(r.width, 320);
+    setOpen({ left: Math.max(8, Math.min(r.left, innerWidth - width - 8)), width, maxHeight: Math.min(352, up ? above : below), ...(up ? { bottom: innerHeight - r.top + 4 } : { top: r.bottom + 4 }) });
+    setHi(Math.max(0, opts.indexOf(value)));
+  };
+  useEffect(() => { if (open) for (const f of opts) showFont(f, own[f] && url(own[f])); }, [open, q, list.length]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { // the highlighted one in view; a click outside closes it, putting the first font back
+    if (!open) return undefined;
+    listEl.current?.querySelector('[data-hi]')?.scrollIntoView({ block: 'nearest' });
+    const out = (e) => { if (!box.current?.contains(e.target)) shut(); };
+    const away = (e) => { if (!box.current?.contains(e.target)) shut(); }; // the panel scrolled: the list would float off its field
+    document.addEventListener('pointerdown', out);
+    document.addEventListener('scroll', away, true);
+    return () => { document.removeEventListener('pointerdown', out); document.removeEventListener('scroll', away, true); };
+  });
+  const key = (e) => {
+    const move = { ArrowDown: 1, ArrowUp: -1 }[e.key];
+    if (move) { e.preventDefault(); const n = Math.min(opts.length - 1, Math.max(0, hi + move)); setHi(n); preview(opts[n]); }
+    else if (e.key === 'Enter') { e.preventDefault(); keep(opts[hi]); }
+    else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); shut(); }
+  };
+  let i = -1;
   return (
-    <label className="num">
-      <span className="num__k">Font</span>
-      <input {...t.props} list="insp-fonts" spellCheck={false} placeholder="Search fonts" onFocus={(e) => e.currentTarget.select()} onBlur={() => { t.props.onBlur(); t.last.current = known(t.text) || value; t.setText(t.last.current); }} onKeyDown={(e) => { if (e.key === 'Escape' || e.key === 'Enter') e.currentTarget.blur(); }} />
-      <datalist id="insp-fonts">{all.map((f) => <option key={f} value={f} />)}</datalist>
-    </label>
+    <div className="font" ref={box}>
+      <button type="button" className="num font__field" aria-haspopup="listbox" aria-expanded={!!open} onClick={() => (open ? shut() : show())}>
+        <span className="num__k">Font</span>
+        <span className="font__value" style={{ fontFamily: `"${value}", var(--font-sans)` }}>{value}</span>
+        <svg className="font__caret" viewBox="0 0 10 6" aria-hidden="true"><path d="M1 1l4 4 4-4" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" /></svg>
+      </button>
+      {open && (
+        <div className="font__pop" style={open}>
+          <input className="font__search" autoFocus value={q} placeholder="Search fonts" spellCheck={false} aria-label="Search fonts"
+            onChange={(e) => { setQ(e.target.value); setHi(0); }} onKeyDown={key} />
+          <div className="font__list" role="listbox" ref={listEl} aria-label="Fonts">
+            {groups.map(([name, fs]) => (
+              <div key={name} role="group" aria-label={name}>
+                <div className="font__group">{name}</div>
+                {fs.map((f) => { i += 1; const n = i; return (
+                  <div key={f} role="option" aria-selected={f === value} data-hi={n === hi ? '' : undefined} className="font__opt"
+                    style={{ fontFamily: `"${f}", var(--font-sans)` }}
+                    onPointerMove={(e) => { if (!e.movementX && !e.movementY) return; if (n !== hi) setHi(n); preview(f); }} onPointerDown={(e) => e.preventDefault()} onClick={() => keep(f)}>
+                    <span>{f}</span>
+                    {roles[f] && <span className="font__role">{roles[f]}</span>}
+                    {f === from.current && <svg className="font__tick" viewBox="0 0 12 10" aria-hidden="true"><path d="M1 5l3.5 3.5L11 1.5" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" /></svg>}
+                  </div>
+                ); })}
+              </div>
+            ))}
+            {!opts.length && <div className="font__none">No font called “{q.trim()}”</div>}
+          </div>
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -127,22 +239,34 @@ function Sec({ title, set, onClear, children }) {
   );
 }
 
-export default function Inspector({ clip: c, line, name, W, H, len, fonts, edit, onSource, onDuplicate, onDelete }) {
+export default function Inspector({ clip: c, line, name, count, looks, onLooks, W, H, len, fonts, fontUrl, fontRoles, edit, onSource, onDuplicate, onDelete }) {
   const b = line || c, media = c.type === 'video' || c.type === 'audio', visual = c.type !== 'audio' && c.type !== 'custom';
   const set = (path, onClip) => (v, live) => edit((d, ref) => ops.set(d, onClip ? ref.slice(0, 2) : ref, path, v), live);
-  const st = c.style || {}, sty = (key) => set(`style.${key}`, true); // a text's or the captions' look
+  // A text's or the captions' look; with several picked, only the texts among them take it.
+  const isText = (d, ref) => ['text', 'captions'].includes(clipType(ops.get(d, ref.slice(0, 2))));
+  const st = c.style || {}, sty = (key) => (v, live) => edit((d, ref) => { if (isText(d, ref)) ops.set(d, ref.slice(0, 2), `style.${key}`, v); }, live);
+  // A font from a file (the edit's own, or the brand's) is written into the doc's fonts too, so it loads wherever it plays.
+  const font = (v, live) => edit((d, ref) => { if (!isText(d, ref)) return; ops.set(d, ref.slice(0, 2), 'style.font', v); if (fonts[v] && !d.fonts?.[v]) d.fonts = { ...d.fonts, [v]: fonts[v] }; }, live);
+  // Its own look, and whether that is a new one: not among the saved styles or the templates, so it can be saved.
+  const own = Object.fromEntries(ops.LOOK.filter((k) => st[k] != null).map((k) => [k, st[k]]));
+  const key = (k) => JSON.stringify(ops.LOOK.map((x) => k[x] ?? null));
+  const fresh = Object.keys(own).length > 0 && ![...looks, ...LOOKS].some((k) => key(k) === key(own));
+  useEffect(() => { // the templates' fonts, for their previews
+    if (document.querySelector(`link[href="${LOOK_FONTS}"]`)) return;
+    document.head.append(Object.assign(document.createElement('link'), { rel: 'stylesheet', href: LOOK_FONTS }));
+  }, []);
   const anim = (key, k) => <Pick k={k} value={c[key]?.type ?? c[key] ?? ''} options={ANIMS} onSave={(v) => set(key, true)(v ? (c[key]?.type ? { ...c[key], type: v } : v) : null)} />;
   const span = (d, ref) => { const x = ops.get(d, ref); return [x.at ?? 0, ref.length === 3 ? x.end : endOf(x)]; }; // in its document
   return (
     <div className="insp">
       <div className="insp__head">
-        <span className="insp__name">{name}</span>
+        <span className="insp__name">{count > 1 ? `${count} picked` : name}</span>
         {onDuplicate && <button type="button" className="btn btn--mini btn--icon" aria-label="Duplicate" title="Duplicate (⌘D)" onClick={onDuplicate}><IcCopy /></button>}
         <button type="button" className="btn btn--mini btn--icon" aria-label="Delete" title="Delete (⌫, with Shift its time too)" onClick={(e) => onDelete(e.shiftKey)}><IcTrash /></button>
       </div>
       {(c.type === 'text' || line) && (
         <Sec title="Text">
-          <Text value={b.text} onSave={(v) => edit((d, ref) => (line ? ops.lineText(d, ref, v) : ops.set(d, ref, 'text', v)))} />
+          <Text value={b.text} onSave={(v) => edit((d, ref) => (ref.length === 3 ? ops.lineText(d, ref, v) : ops.set(d, ref, 'text', v)))} />
         </Sec>
       )}
       <Sec title="Timing">
@@ -161,7 +285,16 @@ export default function Inspector({ clip: c, line, name, W, H, len, fonts, edit,
       {(c.type === 'text' || c.type === 'captions') && (
         <>
           <Sec title={line ? 'Style (all captions)' : 'Style'}>
-            <Font value={st.font || 'Inter'} own={fonts} onSave={sty('font')} />
+            <div className="insp__looks insp__wide" role="group" aria-label="Style templates">
+              {fresh && <button type="button" className="insp__look insp__look--save" title="Save this style as a template" onClick={() => onLooks([own, ...looks])}><span style={lookCss(own)}>Aa</span><b>Save</b></button>}
+              {[...looks, ...LOOKS].map((k, n) => (
+                <span key={n} className="insp__look" role="button" tabIndex={0} title={n < looks.length ? 'A style you saved' : 'A template'} onClick={() => edit((d, ref) => ops.restyle(d, ref.slice(0, 2), k))} onKeyDown={(ev) => { if (ev.key === 'Enter') ev.currentTarget.click(); }}>
+                  <span style={lookCss(k)}>Aa</span>
+                  {n < looks.length && <button type="button" className="insp__unlook" aria-label="Remove this saved style" title="Remove this saved style" onClick={(ev) => { ev.stopPropagation(); onLooks(looks.filter((x) => x !== k)); }}>×</button>}
+                </span>
+              ))}
+            </div>
+            <Font value={st.font || 'Inter'} own={fonts} roles={fontRoles} url={fontUrl} onSave={font} />
             <Pick k="Weight" value={st.weight || 400} options={[300, 400, 500, 600, 700, 800, 900]} onSave={(v) => sty('weight')(+v)} />
             <Num k="Size" unit="px" v={st.size} dflt={64} step={2} min={8} onSet={sty('size')} />
             <Num k="Line" unit="×" v={st.lineHeight} dflt={1.15} step={0.05} min={0.5} max={3} onSet={sty('lineHeight')} />

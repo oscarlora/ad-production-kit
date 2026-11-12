@@ -235,7 +235,10 @@ function lineBoxes(ctx, widths, y0, lh, padY, radius) {
     const w = Math.max(...half.slice(j, i + 1));
     for (let k = j; k <= i; k++) half[k] = w;
   }
-  const n = half.length, ys = half.map((_, i) => y0 + i * lh);
+  // A step sits padY past the line break, toward the shorter line, so the longer line keeps the box's outer
+  // margin over it (the shorter line has no text there).
+  const d = Math.max(0, Math.min(padY, lh / 2 - radius));
+  const n = half.length, ys = half.map((_, i) => y0 + i * lh + (i && half[i] !== half[i - 1] ? (half[i - 1] > half[i] ? d : -d) : 0));
   const top = y0 - padY, bottom = y0 + n * lh + padY;
   const pts = [[-half[0], top], [half[0], top]];
   for (let i = 1; i < n; i++) pts.push([half[i - 1], ys[i]], [half[i], ys[i]]);

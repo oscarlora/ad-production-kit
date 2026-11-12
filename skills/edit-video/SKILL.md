@@ -19,7 +19,7 @@ the ad's **Edit** step: preview, timeline, review comments and an Export button.
    product graphics (**search-media**). The preview loads a file the moment the document names it: finish new media
    (write it under a temp name, then rename it) before pointing the document at it.
 2. **Write the document:** tracks top to bottom (hook and text, captions, video, voice, music, SFX),
-   every time on the timeline clock, one clip at a time per track (what overlaps in time goes on its own track; Studio shows it that way and saves it so on the user's first edit). Clips trim with `in`, play at `rate` and get `transition`s. A speaker's
+   every time on the timeline clock, one clip at a time per track (what overlaps in time goes on its own track; Studio shows it that way and saves it so on the user's first edit). Clips trim with `in`, play at `rate` and get `transition`s. Studio labels a media clip by its file name; give it a `name` only to link a take's picture and voice. A speaker's
    take goes in whole: `tighten` finds where its speech starts and ends (a transcript's word ends run early).
    Anything that changes over time (zoom, volume, saturation…) takes keyframes.
 3. **Captions:** `captions --words <transcript or song timing>` writes word-timed lines (**caption-video**).
@@ -174,8 +174,8 @@ across each join.
 ## Export
 
 The Studio preview is the live edit, so review and revisions never need an export. Export only when the user
-asks or approves the cut; an approval also means push to R2 right after the export (and again after each later
-approval). `node tools/edit-video.mjs export outputs/<ad>/edit.json` (or the user's Export button): H.264 + AAC at
+asks or approves the cut; with several versions, only once every one is approved, then all together. An approval
+also means push to R2 right after the export (and again after each later approval). `node tools/edit-video.mjs export outputs/<ad>/edit.json` (or the user's Export button): H.264 + AAC at
 −14 LUFS into `final/<id>_<initials>_V<n>_…mp4`, about 20 s for 80 s of 1080p; `--out` names it per the brand's
 brief template if it has one. Several versions go in one command (`export edit.json edit-v2.json …`), all at once (one by one on a light computer). `--scale 0.5` makes a quick draft,
 `--from`/`--to` a section. Never grade your own render; hand over the path.

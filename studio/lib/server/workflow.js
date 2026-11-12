@@ -52,7 +52,7 @@ const readRecord = (brandDirAbs, id) => readJson(join(brandDirAbs, 'outputs', 'j
 const readText = (brandDirAbs, p) => { try { return readFileSync(join(brandDirAbs, p), 'utf8'); } catch { return ''; } };
 
 // Strip a file entry to what the client renders; a same-stem .txt beside an image is its prompt, and with brandDirAbs an
-// image also gets its .gen.json sidecar (the viewer's side panel).
+// image also gets its sidecar (readGen; the viewer's side panel).
 function present(files, all, brandDirAbs) {
   const byRel = new Map(all.map((f) => [f.rel, f]));
   const prompts = new Set();
@@ -106,9 +106,11 @@ function parseStoryboard(md) {
   return { header, blocking, rows };
 }
 
-// A generated file's <stem>.gen.json sidecar (model, provider, params, prompt, refs), or null.
+// A generated file's sidecar (model, provider, params, prompt, refs), or null: gen/<stem>.gen.json in its folder, else
+// an older one beside it (sidecarOf in tools/lib/providers.mjs).
 function readGen(brandDirAbs, byRel, f) {
-  const side = byRel.get(f.rel.replace(/\.[^./]+$/, '.gen.json'));
+  const stem = f.rel.replace(/\.[^./]+$/, ''), cut = stem.lastIndexOf('/') + 1;
+  const side = byRel.get(`${stem.slice(0, cut)}gen/${stem.slice(cut)}.gen.json`) || byRel.get(`${stem}.gen.json`);
   const g = side && readJson(join(brandDirAbs, side.p), null);
   if (!g) return null;
   const refs = (Array.isArray(g.refs) ? g.refs : []).map(({ role = 'ref', path = '' }) => {
