@@ -11,7 +11,7 @@ import { Inline } from './Markdown.js';
 import { chat, Compose, Dot, Messages } from './parts.js';
 
 const FILE = 'footage.json';
-const optional = (row) => /\(optional\)/i.test(`${row.line} ${row.action}`);
+const optional = (row) => row.optional;
 const missing = (row) => (optional(row) ? { ok: false, note: 'Optional; not delivered.' } : { ok: false, reshoot: true, note: 'Not delivered yet.' });
 
 // The AI's result: passed, the edit fixes it, or needs a reshoot.

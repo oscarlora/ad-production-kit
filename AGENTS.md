@@ -46,9 +46,11 @@ Every file here — skills, docs, code, comments — is as short and plain as it
   or interview UI.
 - **Visual:** generated media (images, video, audio) shows in Studio as it lands; never hold it back to self-check — the user
   judges and calls re-rolls (brief sub-agents the same way). In chat, say in one line what's ready
-  and on which step; no embeds or links. Only when the user can't see Studio (e.g. on their phone),
-  embed images (`![label](repo-relative/path)`, alternatives in one table row) and link videos
-  (`[label](repo-relative/path)`); when a path has spaces, link a working copy without them.
+  and on which step; no embeds or links. Only while the user can't see Studio (from when they say they're on their
+  phone until they say they're back), also put it in chat: send the files where the app can
+  (Claude Code: `SendUserFile`; a video edit as a half-size `edit-video.mjs export --scale 0.5` copy in
+  the scratchpad); otherwise embed images (`![label](repo-relative/path)`, alternatives in one table row)
+  and link videos (`[label](repo-relative/path)`); when a path has spaces, link a working copy without them.
 
 ## Folder structure
 
@@ -60,7 +62,7 @@ workspace's R2 bucket when it has one (see Operating principles).
       <Brand>/
         inputs/          # research-brand's files: brand.md, products/<product>.md (+ -personas, -angles), customers.md,
                          # competitors.md, ads.md, formats.md, DESIGN.md, products.json · memory.md, uploads.json, brief-templates.md,
-                         # text-styles.json (the text styles saved in Studio's editor)
+                         # text-styles.json, clip-styles.json (the styles saved in Studio's editor)
           sources/       # what research collected: reviews.csv, pages/, ads/, posts.md, competitors/, files/
           media/         # the searchable media library (catalog-media)
         outputs/         # one folder per ad (naming: write-prompt) · json/ records (tools/record-ad.mjs) · index.md · batches/
@@ -128,9 +130,8 @@ Steps (each owns its procedure and rules):
   request before generating, to sunra.ai (`<WS>_SUNRA_API_KEY`; the same models, but ElevenLabs for
   SFX), then the Vercel AI Gateway (`<WS>_AI_GATEWAY_API_KEY`; never suggest it); `--provider` forces
   one.
-- **Video: render at the tool's default tier, never upscale.** MiniMax H3 (768p) and Gemini Omni
-  (720p) takes are final. Seedance drafts at 480p; after approval, and only when the user asks,
-  make the 1080p version of that same take (`generate-video.mjs --upgrade <clip>`, within 7 days),
+- **Video: render at the tool's default tier, never upscale.** Video runs on Seedance 2.5 only. It
+  drafts at 480p; after approval, and only when the user asks, make the 1080p version of that same take (`generate-video.mjs --upgrade <clip>`, within 7 days),
   or a fresh 720p take. Before choosing, tell them the difference in plain words: 720p usually does
   the job at well under half the price but is a new take, so it can come out slightly different;
   1080p keeps the approved take exactly. Never enlarge or upscale a take, or use it as a reference.

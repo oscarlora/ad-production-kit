@@ -21,10 +21,6 @@ export const MODELS = {
     doc: 'https://docs.kie.ai/market/gpt/gpt-image-2-6-flare-text-to-image.md' }, // + -image-to-image.md
   'nano-banana-2.1':       { kind: 'image', kie: 'nano-banana-2-1', sunra: 'google/gemini-nano-banana-2.1', gateway: 'google/gemini-nano-banana-2.1',
     doc: 'https://docs.kie.ai/market/google/nanobanana-2-1.md' },
-  'minimax-h3':            { kind: 'video', kie: 'minimax-h3', sunra: 'minimax/minimax-h3', fallback: 'gemini-omni-1.2-flash',
-    doc: 'https://docs.kie.ai/market/minimax-h3/text-to-video.md' }, // + image-to-video.md, reference-to-video.md
-  'gemini-omni-1.2-flash': { kind: 'video', kie: 'google/gemini-omni-flash-1-2', sunra: 'google/gemini-omni-1.2-flash', fallback: 'seedance-2.5',
-    doc: 'https://docs.kie.ai/market/google/gemini-omni-flash-1-2.md' },
   'seedance-2.5':          { kind: 'video', kie: 'bytedance/seedance-2-5', sunra: 'bytedance/seedance-2.5', gateway: 'bytedance/seedance-2.5',
     doc: 'https://docs.kie.ai/market/bytedance/seedance-2-5.md' },
   'gemini-3.8-flash-tts':  { kind: 'speech', kie: 'google/gemini-3-8-flash-tts', sunra: 'google/gemini-3.8-flash-tts', gateway: 'google/gemini-3.8-flash-tts',

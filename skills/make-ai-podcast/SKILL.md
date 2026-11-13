@@ -104,7 +104,7 @@ graphic goes on in the edit: write the dialogue so nothing needs to be shown.
 ## 8. Video prompts
 
 Split the script into consecutive clips within the model's per-clip cap (**write-video-prompt**, Video
-models); round each clip's length up to a whole second. Time each clip at **write-copy**'s pace
+model); round each clip's length up to a whole second. Time each clip at **write-copy**'s pace
 (Length), counting every speaker's words. If a render drags, drop its duration by a second rather
 than cutting words; if it rushes, cut words rather than adding seconds.
 
@@ -153,7 +153,6 @@ Once the user approves the clip prompts, one run per clip:
 node tools/generate-video.mjs \
   --prompt-file <clip>.txt \
   --image <host-base>.png --image <guest-base>.png \
-  --model seedance-2.5 \
   --aspect 9:16 --duration <within the model's cap> \
   --out workspaces/<WS>/<Brand>/outputs/<ad-name>/clips/<clip>.mp4 --timeout 600
 ```

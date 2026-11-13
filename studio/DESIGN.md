@@ -100,13 +100,16 @@ and nav buttons. A dashed border means empty or a draft.
 - **Comments** `.ed__comments` (the editor's and a brief's): the count on the left, then Approve all and a plain
   archive icon (no background) that shows the approved ones, then one bordered card per comment (no fill): what it's
   on (its number and time, or the quote), its stage as a dot and word (Waiting, Working on it, Ready to review), and
-  its rounds as a thread. Only a comment ready to review gets buttons, as mini buttons on the right: Approve (primary), Watch
-  change, Send back (what's still off is written as the user's next bubble in the thread); Edit (while waiting) and Delete show on hover. Hovered or pointed at from
-  the timeline, a card lifts; picked, it gets a dark ring. The editor ends the list with an always-there Add a comment
-  field (N focuses it), its round primary send arrow inside on the right, dimmed while empty. Dragging above the
-  timeline's ruler picks a stretch for it: a faint `--fg` band with hairline edges over every track, its edges snapping
-  to block edges (with Shift, as the playhead does, always to the nearest); a comment on a stretch shows a 3px bar
-  under its number.
+  its rounds as a chat thread. A comment ready to review gets mini buttons on the right: Approve (primary), Watch
+  change; Edit (while waiting) and Delete show on hover. Picked, it gets a dark ring and a reply field at its bottom, always
+  open (the new comment's field and send arrow); a reply is the user's next bubble and reopens the comment. Hovered or
+  pointed at from the timeline, a card lifts. The editor has no list: a comment is a small numbered dot on
+  the timeline's ruler (grey, blue once seen, green when done; white when lit) and, when it marks a spot, a numbered circle there on the frame (while that moment shows); a click on
+  either opens it in a popover there (the popover is its card: no border or ring of its own). A new comment without a spot (N) is written in a popover over the
+  ruler, its round primary send arrow inside on the right, dimmed while empty. In Comment mode, dragging along the timeline's ruler
+  picks a stretch for it: a faint `--fg` band with hairline edges over every track, its edges snapping
+  to block edges (with Shift, as the playhead does, always to the nearest); a comment on a stretch draws a
+  thin line along it through its dot. The ruler is the timeline's only head row, pinned on top as the tracks scroll under it.
 - **Image card** `ImageCard` (every generated image a step shows: drafts, finals, sheets, looks): a storyboard frame's
   card in a grid: its name ("V8 · Piel de bebe", the file name on hover), the picture at its own ratio (click opens the
   viewer), the step's actions as mini buttons (a render's Approve, or the pressed Approved that moves it back to Drafts),
@@ -138,22 +141,24 @@ and nav buttons. A dashed border means empty or a draft.
   feed crops it can be cut to, then (9:16 only) Meta's Reels safe zone, then off.
 - **Editing by hand** (the editor): the frame's tools sit under it, centered, icons in one segmented track with
   their keys in the tooltips: the two modes (Select, Comment with its open count), a hairline, then what acts at the
-  playhead (Add text, Split), a hairline, the guides button. The mode switches the frame and the side together. **Select**: a click on the frame
-  picks the top clip there and the side shows its inspector.
-  **Comment**: the frame marks spots and the side lists the comments. Picking a clip or a comment anywhere switches to
-  its mode (V and C too). A click on nothing lets go of the picked block; Shift or ⌘ click picks several, and the inspector's changes then go to all of them. A click picks a timeline block (a dark ring); its
-  middle drags to move (onto another track's row, which tints, or the ruler's for a new top track), its edges to trim (never over another clip on its track: it lands in the nearest free stretch; trimming a video or sound in a sequence moves what follows), snapping to block edges and the playhead; a picked clip is outlined on the frame and drags there
-  to place it, its center snapping to the frame's and to other clips', a hairline guide showing each. The pointer over the timeline skims: the preview shows that moment under a faint `--muted` line, the playhead staying put (a click on an empty lane moves it there). A track's name drags up or down to reorder the tracks, a 2px `--fg` line marking where it lands; hovered, a bin at its end deletes the track; a double click types over the name. Pinch or ⌘-scroll zooms the timeline (+ / -, Shift+Z to fit) from the whole edit down to single frames, the ruler's labels and ticks following (a mark off a whole second reads as its frame, "12f"), which then scrolls under the track names.
+  playhead (Add text, Split), a hairline, the guides button. In the preview's top left corner a track holds the versions (V1, V2, …, when there are several); in its top right, Export (a download icon, its percent while it runs, then an icon that opens the video) and the gear for the edit's own settings. The mode switches what the frame does. **Select**: a click on the frame
+  picks the top clip there and opens its inspector.
+  **Comment**: the frame marks spots. The side always lists the comments. Picking a clip or a comment anywhere switches to
+  its mode (V and C too). A click on nothing lets go of the picked block; Shift or ⌘ click picks several, as does a box dragged from an empty spot of the lanes (a faint `--fg` fill, hairline edge; letting go opens their settings over it); their settings show only what all of them have, "Mixed" (as a placeholder) where their values differ, and a change goes to all of them. A click picks a timeline block (a dark ring); its
+  middle drags to move (onto another track's row, which tints, or the ruler's for a new top track; a video or sound in a run of touching clips, along its own track, carries its whole stretch of the edit, every track's layers over it, to the cut nearest the pointer, marked by a 2px `--fg` line, so lines swap places), its edges to trim (never over another clip on its track: it lands in the nearest free stretch; trimming a video or sound in a sequence moves what follows), snapping to block edges and the playhead; a picked clip is outlined on the frame and drags there
+  to place it, its center snapping to the frame's and to other clips', a hairline guide showing each. The pointer over the timeline skims: the preview shows that moment under a faint `--muted` line, the playhead staying put (a click on an empty lane moves it there; between two blocks, where no video or sound plays on another track, it also picks that gap: a faint band with a small `--fg` Close gap pill, which, or Delete, takes the gap's time out of every track, and a trim that shortens a clip picks the gap it leaves). A track's name drags up or down to reorder the tracks, a 2px `--fg` line marking where it lands (between two tracks of a group it joins it; away from its group it leaves it); a click on it picks it (tinted `--fill`; Shift or ⌘: several), and with two or more picked a small `--fg` Group pill (⌘G) puts them in a group, ⇧⌘G takes them out. A group is a folder row over its tracks, which indent under it on a hairline guide: a chevron folds them into its row (their blocks shown small there), its eye and speaker act on all of them, its name drags the group and renames on a double click, and hovered it shows Ungroup; hovered, a bin at its end deletes the track; a double click types over the name. The timeline's top edge resizes it (a short grip bar in its middle stands out above the line), from its top row to all its tracks and never taller; a double click on it collapses it to its top row or opens it back. Pinch or ⌘-scroll zooms the timeline (+ / -, Shift+Z to fit) from the whole edit down to single frames, the ruler's labels and ticks following (a mark off a whole second reads as its frame, "12f"), which then scrolls under the track names.
   Every change shows at once and undoes with ⌘Z.
-- **Inspector** `.insp`: with nothing picked, the edit's own settings (frame size with ratio presets, background,
-  frame rate, loudness); else the picked block's name with Duplicate and Delete, then one hairline-divided section per
+- **Inspector** `.insp`, in a popover `.pop`: settings show only when asked for, floating by what was clicked so the
+  page stays the preview, its bar, the comments and the timeline. A click on a timeline block opens it over the block,
+  growing upward; a click on a clip on the frame opens it beside the frame; the gear by Export opens the edit's own
+  (frame size with ratio presets, background, frame rate, loudness) under itself. Esc, its ×, or a press outside
+  closes it; a drag never opens it. A clip's has its name with Duplicate, Delete and Close, then one hairline-divided section per
   setting (Text, Timing, Layout, Style, Media, Volume), two fields a row; the optional ones (a text's Stroke,
   Background and Shadow; Fade, Animation, Transition) are a muted title with a + that adds them, then a − that takes
-  them away. Style opens with its templates, a row of small black tiles each drawing "Aa" in a look (the brand's saved styles first, an × on hover removing one); a click applies one. A picked text whose look is new leads the row as a dashed Save tile. A color is a `.num` with its hex to type and a swatch that opens a small floating row: the brand's colors (from its DESIGN.md), then Custom for the browser's picker; the font is a `.num` that searches Google Fonts' families as it is typed. A number is one field `.num`, which drags sideways anywhere on it to change
+  them away. Style opens with its templates, a row of small black tiles each drawing "Aa" in a look (a picture's or shape's: a grey square with its corners, frame and shadow) (the brand's saved styles first, an × on hover removing one); a click applies one. A picked text whose look is new leads the row as a dashed Save tile. A color is a `.num` with its hex to type and a swatch that opens a small floating row: the brand's colors (from its DESIGN.md), then Custom for the browser's picker; the font is a `.num` that searches Google Fonts' families as it is typed. A number is one field `.num`, which drags sideways anywhere on it to change
   the value live (a click types it): its label, the value right-aligned, a faint unit; a keyframed one reads "keyed"; one off its default has its label in `--fg`, and a double click on the label resets it.
-- **Trim panel** `.trim` (a double click on a media clip, Enter, or its inspector's source button): a floating panel above the editor's timeline: the clip's
-  picture, its whole source as two strips (frames, waveform), and the part it plays as a dark-edged selection over
-  both to drag (edges, or the middle to slide); letting go plays the new cut.
+- **Source strip** `.trim` (a media clip's inspector, under Media): its whole source as two strips (frames, waveform), and the
+  part it plays as a dark-edged selection over both to drag (edges, or the middle to slide); letting go saves and plays the new cut.
 - **Notice** `.notice`: a `--fill` box in a side panel, for something to act on (an unnamed person to name).
 - **Toast** `.toast`: near-black, bottom center, slides up 6px.
 - **Focus**: always visible, never a ring outside the thing: its own edge darkens to `--muted` (a field's border; else a 1px `--focus-ring` where its border sits).

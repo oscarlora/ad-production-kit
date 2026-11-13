@@ -177,7 +177,8 @@ function footageView(brandDirAbs, brief, files) {
     const col = (re) => head.findIndex((h) => re.test(h));
     const s = col(/^scene$/i), l = col(/^lines?$/i), a = col(/^action$/i);
     if (s < 0) return;
-    for (const r of rows) if (!isSeparator(r) && r[s]) scenes.push({ scene: r[s].replace(/\*\*/g, '').trim(), line: r[l] || '', action: r[a] || '' });
+    // A scene is optional when its row says so anywhere ("(Optional)", "Only if you have them" in its notes).
+    for (const r of rows) if (!isSeparator(r) && r[s]) scenes.push({ scene: r[s].replace(/\*\*/g, '').trim(), line: r[l] || '', action: r[a] || '', optional: /\boptional\b|\bonly if\b/i.test(r.join(' ')) });
   });
   const known = new Set(scenes.map((x) => sceneKey(x.scene)));
   for (const k of Object.keys(doc.clips || {})) if (!known.has(sceneKey(k))) scenes.push({ scene: k, line: '', action: '', extra: true });

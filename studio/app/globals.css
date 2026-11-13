@@ -814,21 +814,28 @@ kbd { font: inherit; font-size: var(--text-xs); color: var(--muted); background:
 }
 
 /* ---- Edit: preview, comments, timeline ---- */
-.ed { --ed-h: max(280px, calc(100vh - var(--bar-h) - var(--tl-h, 260px))); container-type: inline-size; display: grid; grid-template-columns: max-content minmax(15rem, 1fr); gap: 16px 24px; align-items: start; padding-bottom: var(--tl-h, 260px); }
+.ed { --ed-h: max(280px, calc(100dvh - var(--bar-h) - var(--tl-h, 260px))); container-type: inline-size; display: grid; grid-template-columns: minmax(0, 1fr); align-items: start; padding-bottom: var(--tl-h, 260px); }
 .flow-page:has(.ed) { padding-top: 0; padding-bottom: 0; }
 /* The editor: all on --bg */
 .flow-panel:has(.ed) { margin: 0 calc(-1 * var(--page-pad)); padding: 20px var(--page-pad) 0; background: var(--bg); min-height: calc(100vh - var(--bar-h)); }
 /* The timeline stays at the bottom of the window; the preview and comments take the space above */
-.ed__tl { position: fixed; z-index: 30; left: var(--nav-left, 0); right: 0; bottom: 0; background: var(--bg); border-top: 1px solid var(--line); }
-.ed__tl[data-drag] { overflow: hidden; }
-.ed__tl[data-drag="snap"] { transition: height 180ms var(--ease-out); }
-/* The timeline's top edge: drag it down to hide the tracks, up to show them */
-.ed__edge { position: absolute; z-index: 5; left: 0; right: 0; top: -1px; height: 7px; cursor: row-resize; touch-action: none; }
-.ed__edge::after { content: ""; position: absolute; left: 0; right: 0; top: 0; height: 2px; transition: background-color var(--dur) var(--ease-out); }
-.ed__edge:hover::after, [data-drag] > .ed__edge::after { background: var(--muted); }
-.ed__main { --tools-h: 44px; width: min(calc((var(--ed-h) - var(--tools-h)) * var(--ar)), calc(100cqw + var(--page-pad) - 15rem - 24px)); height: var(--ed-h); display: grid; grid-template-rows: minmax(0, 1fr) var(--tools-h); place-items: center; margin: -20px 0 0 calc(-1 * var(--page-pad)); background: var(--media-bg); border-right: 1px solid var(--line); } /* a grey stage filling the height, flush left, a line on its right like the timeline's; as wide as the frame, or the width beside the 15rem side column */
-.ed__stage { position: relative; width: 100%; max-height: 100%; background: var(--stage); overflow: hidden; cursor: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24'%3E%3Cpath d='M21 12a8 8 0 01-11.6 7.1L4 20l1-4.6A8 8 0 1121 12z' fill='%23fff' stroke='%23111' stroke-width='1.5' stroke-linejoin='round'/%3E%3C/svg%3E") 4 20, crosshair; touch-action: none; user-select: none; }
+/* The timeline's top edge resizes it: a short bar in its middle, standing out above the line, marks the grip */
+.ed__grip { position: absolute; z-index: 8; left: 0; right: 0; top: 0; height: 0; cursor: row-resize; touch-action: none; }
+.ed__grip::before { content: ""; position: absolute; left: 0; right: 0; top: -4px; height: 9px; }
+.ed__grip::after { content: ""; position: absolute; left: 50%; top: -3px; width: 36px; height: 5px; margin-left: -18px; background: var(--line-strong); border-radius: 3px; transition: background-color var(--dur) var(--ease-out); }
+.ed__grip:hover::after { background: var(--muted); }
+.ed__tl { position: fixed; z-index: 30; left: var(--nav-left, 0); right: 0; bottom: 0; display: flex; flex-direction: column; max-height: 42vh; background: var(--bg); border-top: 1px solid var(--line); } /* every track; past its height, it scrolls */
+.ed__tl-in { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.ed__tl-in > .tl { flex: 1; min-height: 0; overflow: auto; overscroll-behavior: contain; } /* one scroller both ways, so the ruler row can stay pinned */
+.ed__main { --tools-h: 44px; position: relative; width: calc(100% + 2 * var(--page-pad)); height: var(--ed-h); display: grid; grid-template-rows: minmax(0, 1fr) var(--tools-h); place-items: center; margin: -20px calc(-1 * var(--page-pad)) 0; background: var(--media-bg); } /* the preview across the page, the frame centered in it */
+.ed__stage { position: relative; width: min(100%, calc((var(--ed-h) - var(--tools-h)) * var(--ar))); /* the whole frame, whatever the window */ background: var(--stage); overflow: hidden; cursor: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24'%3E%3Cpath d='M21 12a8 8 0 01-11.6 7.1L4 20l1-4.6A8 8 0 1121 12z' fill='%23fff' stroke='%23111' stroke-width='1.5' stroke-linejoin='round'/%3E%3C/svg%3E") 4 20, crosshair; touch-action: none; user-select: none; }
 /* The frame's tools, under it: the two modes as a segmented control, then what acts at the playhead */
+/* The versions in the preview's top left corner; Export and the edit's settings in its top right */
+.ed__corner { position: absolute; z-index: 4; top: 12px; }
+.ed__corner--left { left: 12px; }
+.ed__corner--right { right: 12px; }
+.ed__corner .chip { padding: 0 8px; }
+.ed__corner .chip svg { width: 15px; height: 15px; }
 .ed__tools .chip { padding: 0 8px; }
 .ed__tools .chip svg { width: 15px; height: 15px; }
 .ed__tools .chip:disabled { opacity: 0.5; cursor: default; }
@@ -837,6 +844,11 @@ kbd { font: inherit; font-size: var(--text-xs); color: var(--muted); background:
 .ed__stage canvas { width: 100%; height: 100%; display: block; }
 .ed__outline { position: absolute; inset: 1px; width: calc(100% - 2px); height: calc(100% - 2px); overflow: visible; fill: none; stroke: var(--on-media); stroke-width: 2; mix-blend-mode: difference; pointer-events: none; } /* around the picked clip */
 .ed__guide { position: absolute; min-width: 1px; min-height: 1px; background: var(--on-media); mix-blend-mode: difference; pointer-events: none; } /* a line the dragged clip is snapped to */
+/* Settings floating by what was clicked (Inspector.js Pop): a panel over the page, scrolling inside when taller than its room */
+.pop { position: fixed; z-index: 45; width: 304px; display: flex; flex-direction: column; background: var(--bg-subtle); border-radius: var(--radius); box-shadow: var(--shadow-float); overflow: hidden; animation: pop-in var(--dur-enter) var(--ease-out); }
+@keyframes pop-in { from { opacity: 0; transform: scale(0.97); } }
+.pop .insp { margin: 0; padding: 0 12px 4px; overscroll-behavior: contain; }
+.pop .insp__head { position: sticky; top: 0; z-index: 2; background: var(--bg-subtle); }
 /* The picked clip's settings: its name and actions, then a hairline-divided section per setting, two fields a row */
 .insp { flex: 1; min-height: 0; overflow: auto; margin-top: -12px; font-size: var(--text-sm); }
 .insp__head { display: flex; align-items: center; gap: 4px; padding: 12px 0; }
@@ -860,7 +872,7 @@ kbd { font: inherit; font-size: var(--text-xs); color: var(--muted); background:
 .insp__unlook { position: absolute; top: 1px; right: 1px; width: 14px; height: 14px; padding: 0; font-size: 11px; line-height: 1; color: var(--fg); background: var(--raised); border: 0; border-radius: 50%; cursor: pointer; opacity: 0; }
 .insp__look:hover > .insp__unlook, .insp__unlook:focus-visible { opacity: 1; }
 .insp__look span { padding: 2px 4px; border-radius: 3px; }
-.insp__src { justify-content: center; font-variant-numeric: tabular-nums; }
+.insp__look .insp__swatch { width: 22px; height: 22px; padding: 0; background: var(--muted); } /* a picture's look */
 /* A number: its label, the value, its unit; the whole field drags sideways to change the value, a click types it */
 .num { display: flex; align-items: center; min-width: 0; cursor: ew-resize; user-select: none; background: var(--fill); height: var(--control-h-sm); border: 1px solid var(--line); border-radius: var(--radius-sm); transition: border-color var(--dur) var(--ease-out); }
 .num:hover { border-color: var(--line-strong); }
@@ -893,6 +905,8 @@ kbd { font: inherit; font-size: var(--text-xs); color: var(--muted); background:
 .font__tick { width: 12px; height: 10px; flex: none; color: var(--fg); }
 .font__none { padding: 12px 8px; font-size: var(--text-sm); color: var(--muted); }
 .num__swatch { flex: none !important; width: 16px; height: 16px !important; margin-left: 6px; padding: 0 !important; border-radius: 4px; cursor: pointer; overflow: hidden; }
+.num__swatch[data-mixed] { background: repeating-linear-gradient(45deg, var(--muted) 0 2px, var(--fill) 2px 5px) !important; } /* the picked ones' colors differ */
+.num__swatch[data-mixed]::-webkit-color-swatch { opacity: 0; }
 button.num__swatch { border: 1px solid var(--line-strong); }
 /* A color's picker: the brand's colors in a row, then Custom (the browser's picker) */
 .num:has(.num__colors) { position: relative; }
@@ -907,6 +921,15 @@ button.num__swatch { border: 1px solid var(--line-strong); }
 .ed__zones { position: absolute; inset: 0; pointer-events: none; }
 .ed__wait { position: absolute; inset: 0; display: grid; place-items: center; color: var(--faint); font-size: var(--text-xs); }
 /* Inverts what is under it, so it shows on light and dark frames alike */
+/* A comment's spot on the frame: a numbered circle; a click opens the comment beside it */
+.ed__pin { position: absolute; z-index: 3; width: 22px; height: 22px; margin: -11px 0 0 -11px; display: grid; place-items: center; padding: 0; font: inherit; font-size: 11px; font-weight: 600; color: var(--bg); background: var(--fg); border: 0; border-radius: 50%; box-shadow: 0 0 0 2px rgb(0 0 0 / 0.35), 0 2px 6px rgb(0 0 0 / 0.4); cursor: pointer; transition: transform var(--dur-press) var(--ease-out); }
+.ed__pin:hover { transform: scale(1.1); }
+.ed__pin[data-status="seen"] { background: var(--muted); }
+/* One comment in a popover; a new one's field */
+.ed__one { list-style: none; padding: 12px; }
+.pop .ed__add-row { padding: 10px; }
+.pop textarea.ed__add { background: var(--fill); }
+.pop .ed__send { right: 16px; bottom: 16px; }
 .ed__box { position: absolute; border: 2px solid var(--on-media); border-radius: var(--radius-sm); mix-blend-mode: difference; pointer-events: none; }
 .ed__box--draft { border-style: dashed; }
 .ed__compose { position: absolute; width: 55%; z-index: 2; cursor: auto; }
@@ -919,12 +942,13 @@ button.num__swatch { border: 1px solid var(--line-strong); }
 .ed__play svg { width: 13px; height: 13px; }
 .ed__clock { font-size: var(--text-xs); color: var(--fg); font-variant-numeric: tabular-nums; white-space: nowrap; }
 .ed__clock span { color: var(--muted); }
-.ed__side { display: flex; flex-direction: column; gap: 12px; min-width: 0; height: calc(var(--ed-h) - 20px); padding-bottom: calc(var(--page-pad) - 4px); } /* 20px: the panel's top padding; the bottom gap matches the sides (the add row adds 4px) */
-.ed__side > :not(.ed__head, .ed__comments) { max-width: 36rem; }
-/* A bar like the top bar: from the preview's line to the window's edge, a hairline under it */
-.ed__head { display: flex; align-items: center; gap: 8px; height: var(--bar-h); margin: -20px calc(-1 * var(--page-pad)) 0 -24px; padding: 0 var(--page-pad) 0 24px; border-bottom: 1px solid var(--line); }
-.ed__export { display: flex; align-items: center; gap: 8px; }
-.ed__fail, .ed__error { color: var(--warning); font-size: var(--text-xs); }
+.ed__error { color: var(--warning); font-size: var(--text-xs); }
+/* The editor's comments float over the right of the preview, only while there are open ones or one being added */
+.ed__notes { position: absolute; z-index: 5; top: 12px; right: 12px; width: min(21rem, calc(100% - 24px)); max-height: calc(100% - var(--tools-h) - 24px); display: flex; flex-direction: column; padding: 10px 10px 6px; background: var(--bg-subtle); border-radius: var(--radius); box-shadow: var(--shadow-float); animation: pop-in var(--dur-enter) var(--ease-out); }
+.ed__notes > .ed__comments { flex: 1; min-height: 0; max-height: none; }
+.ed__notes .ed__add-row { position: sticky; bottom: -4px; margin-top: auto; padding: 8px 0 4px; background: var(--bg-subtle); }
+.ed__notes .ed__send { bottom: 10px; }
+.ed__error { position: absolute; z-index: 6; top: 12px; left: 12px; max-width: 24rem; }
 .ed__comments { display: flex; flex-direction: column; gap: 8px; max-height: calc(var(--ed-h) - 1rem + 8px); overflow: auto; padding: 4px; margin: -4px; } /* the room keeps the cards' outlines from being clipped */
 .ed__comments ul { list-style: none; display: flex; flex-direction: column; gap: 8px; }
 .ed__comments-head { display: flex; align-items: center; gap: 12px; }
@@ -936,6 +960,7 @@ button.num__swatch { border: 1px solid var(--line-strong); }
 .ed-comment { display: flex; flex-direction: column; gap: 8px; padding: 10px 10px 10px 12px; border-radius: var(--radius); box-shadow: var(--shadow-border); font-size: var(--text-sm); cursor: pointer; transition: box-shadow var(--dur) var(--ease-out); }
 .ed-comment:hover, .ed-comment[data-lit] { box-shadow: var(--shadow-border), 0 0 0 1px var(--line-strong); }
 .ed-comment[aria-current] { box-shadow: 0 0 0 1.5px var(--fg); }
+.ed__one .ed-comment { padding: 0; box-shadow: none; cursor: default; } /* alone in its popover, the popover is its card */
 .ed-comment__head { display: flex; align-items: center; gap: 8px; min-height: 24px; }
 .ed-comment__lead { flex: 1; min-width: 0; padding: 0; font: inherit; text-align: left; color: inherit; background: none; border: 0; cursor: pointer; }
 .ed-comment__time { color: var(--muted); font-variant-numeric: tabular-nums; }
@@ -951,12 +976,11 @@ button.num__swatch { border: 1px solid var(--line-strong); }
 .ed-comment[data-status="approved"] .ft-msg { color: var(--muted); }
 .ed-comment__acts { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px; }
 .ed-comment .ft-compose { margin-top: 0; }
+.ed-comment .ed__add-row { padding: 0; }
+.ed-comment .ed__send { right: 5px; bottom: 5px; }
 textarea.ed__add { display: block; width: 100%; min-height: 36px; padding: 8px 40px 8px 10px; resize: none; font: inherit; font-size: var(--text-sm); background: var(--bg); }
 .ed__add-row { position: relative; }
 /* In the editor the list fills the side's height and the add field stays pinned at its bottom. */
-.ed__side > .ed__comments { flex: 1; min-height: 0; max-height: none; }
-.ed__side .ed__add-row { position: sticky; bottom: -4px; margin-top: auto; padding: 8px 0 4px; background: var(--bg); }
-.ed__side .ed__send { bottom: 10px; }
 .ed__send { position: absolute; right: 6px; bottom: 6px; width: 26px; height: 26px; padding: 0; border-radius: 50%; }
 .ed__send svg { width: 14px; height: 14px; }
 
@@ -966,30 +990,27 @@ textarea.ed__add { display: block; width: 100%; min-height: 36px; padding: 8px 4
 .tl-in { position: relative; width: calc(var(--tl-name) + (100% - var(--tl-name)) * var(--tl-zoom, 1)); }
 .tl-track { display: grid; grid-template-columns: var(--tl-name) minmax(0, 1fr); }
 .tl-track:not(.tl-track--head) { height: 30px; border-top: 1px solid var(--fill); }
-.tl-track--head { height: 48px; }
+.tl-track--head { position: sticky; top: 0; z-index: 7; height: 34px; background: var(--bg); box-shadow: 0 1px var(--fill); } /* pinned as the tracks scroll under it */
 .tl-transport { display: flex; align-items: center; gap: 8px; }
 .tl-name { position: sticky; left: 0; z-index: 6; background: var(--bg); box-shadow: 1px 0 var(--fill); color: var(--muted); padding: 0 10px 0 12px; line-height: var(--control-h-sm); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .tl-track:not(.tl-track--head) .tl-name { line-height: 30px; }
 .tl-track[data-video] { height: 74px; }
 .tl-track[data-video] .tl-name { line-height: 74px; }
-.trim { position: fixed; z-index: 40; left: 50%; bottom: calc(var(--tl-h, 0px) + 12px); transform: translateX(-50%); width: min(760px, calc(100vw - 32px)); padding: 12px; background: var(--bg); border-radius: var(--radius); box-shadow: var(--shadow-float); font-size: var(--text-sm); }
-.trim__head { display: flex; align-items: baseline; gap: 10px; margin-bottom: 10px; }
-.trim__name { font-weight: 600; }
+/* The part of its source a clip plays, in the inspector: the strips, then play and its times */
+.trim { display: flex; flex-direction: column; gap: 6px; }
+.trim__pic { display: block; width: 100%; height: 180px; object-fit: contain; background: var(--stage); border-radius: var(--radius-sm); }
+.trim__row { display: flex; align-items: center; gap: 8px; }
 .trim__meta { color: var(--muted); font-size: var(--text-xs); font-variant-numeric: tabular-nums; }
-.trim__body { display: flex; gap: 12px; align-items: stretch; }
-.trim__pic { width: 96px; aspect-ratio: 9 / 16; object-fit: cover; background: var(--stage); border-radius: var(--radius-sm); flex: none; }
-.trim__strip { flex: 1; display: flex; flex-direction: column; justify-content: space-between; gap: 10px; min-width: 0; }
-.trim__bar { position: relative; height: 56px; background: var(--bg-subtle); border-radius: var(--radius-sm); overflow: hidden; touch-action: none; user-select: none; }
-.trim__bar[data-video] { height: 104px; }
-.trim__film { position: absolute; left: 0; top: 0; width: 100%; height: 64px; display: block; }
-.trim__wave { position: absolute; left: 0; bottom: 4px; width: 100%; height: 48px; color: var(--muted); }
-.trim__bar[data-video] .trim__wave { height: 34px; }
+.trim__bar { position: relative; height: 44px; background: var(--bg-subtle); border-radius: var(--radius-sm); overflow: hidden; touch-action: none; user-select: none; }
+.trim__bar[data-video] { height: 84px; }
+.trim__film { position: absolute; left: 0; top: 0; width: 100%; height: 52px; display: block; }
+.trim__wave { position: absolute; left: 0; bottom: 4px; width: 100%; height: 36px; color: var(--muted); }
+.trim__bar[data-video] .trim__wave { height: 26px; }
 .trim__sel { position: absolute; top: 0; bottom: 0; background: rgb(255 255 255 / 0.12); box-shadow: inset 0 0 0 2px var(--fg); border-radius: var(--radius-sm); cursor: grab; }
 .trim__sel:active { cursor: grabbing; }
-.trim__edge { position: absolute; top: 0; bottom: 0; width: 10px; background: var(--fg); cursor: ew-resize; }
+.trim__edge { position: absolute; top: 0; bottom: 0; width: 8px; background: var(--fg); cursor: ew-resize; }
 .trim__edge--start { left: 0; border-radius: var(--radius-sm) 0 0 var(--radius-sm); }
 .trim__edge--end { right: 0; border-radius: 0 var(--radius-sm) var(--radius-sm) 0; }
-.trim__acts { display: flex; align-items: center; gap: 8px; }
 .tl-toggle { display: inline-grid; place-items: center; width: 20px; height: 20px; margin: 0 4px 0 -4px; padding: 0; vertical-align: middle; color: var(--muted); background: none; border: 0; border-radius: var(--radius-sm); cursor: pointer; transition: color var(--dur) var(--ease-out), background-color var(--dur) var(--ease-out); }
 .tl-toggle:hover { color: var(--fg); background: var(--fill); }
 /* A track's name row: its toggles, its name, and on hover a bin at the end that deletes the track */
@@ -1027,6 +1048,17 @@ textarea.ed__add { display: block; width: 100%; min-height: 36px; padding: 8px 4
 .tl-cut:hover::before, .tl-cut:hover::after, .tl-cut[data-drag]::before, .tl-cut[data-drag]::after { opacity: 1; }
 .tl-clip[data-drag] { z-index: 2; opacity: 0.8; cursor: grabbing; }
 .tl-track:not(.tl-track--head) > .tl-name { cursor: grab; } /* drag it to reorder the tracks; a line marks where it lands */
+/* Groups: a folder row (its chevron turns open), its tracks indented under it with a guide; a picked track or group's name tinted */
+.tl-track--group > .tl-name { color: var(--fg); font-weight: 500; }
+.tl-fold svg { transition: transform var(--dur) var(--ease-out); }
+.tl-track--group[data-open] .tl-fold svg { transform: rotate(90deg); }
+.tl-track[data-member] > .tl-name { padding-left: 30px; }
+.tl-track[data-member] > .tl-name::before { content: ""; position: absolute; left: 21px; top: 0; bottom: 0; width: 1px; background: var(--line); }
+.tl-track[data-picked] > .tl-name { color: var(--fg); background: var(--fill); }
+.tl-gspan { position: absolute; top: 50%; height: 4px; margin-top: -2px; border-radius: 2px; background: var(--raised); pointer-events: none; }
+.tl-clip--mini { top: 7px; bottom: 7px; opacity: 0.8; pointer-events: none; }
+.tl-clip--mini .tl-label { line-height: 14px; font-size: 10px; }
+.tl-gbtn { margin: 0 -4px 0 4px; padding: 0 8px; height: 20px; font: inherit; font-size: 11px; color: var(--bg); background: var(--fg); border: 0; border-radius: 10px; cursor: pointer; }
 .tl-track[data-over="top"] { box-shadow: inset 0 2px var(--fg); }
 .tl-track[data-over="bottom"] { box-shadow: inset 0 -2px var(--fg); }
 .tl-track[data-drop] > .tl-lane { background: var(--fill-soft); } /* where a dragged clip will land */
@@ -1046,35 +1078,37 @@ textarea.ed__add { display: block; width: 100%; min-height: 36px; padding: 8px 4
 .tl-key { position: absolute; z-index: 4; bottom: 4px; width: 5px; height: 5px; margin-left: -2.5px; background: var(--fg); transform: rotate(45deg); }
 .tl-vol { position: absolute; left: 0; top: 2px; width: 100%; height: calc(100% - 4px); pointer-events: none; }
 .tl-vol polyline { fill: none; stroke: var(--muted-emphasis); stroke-width: 1.25; }
-.tl-ruler { position: absolute; left: 0; right: 0; bottom: 0; height: 26px; border-top: 1px solid var(--fill); background: linear-gradient(to right, var(--line-strong) 1px, transparent 1px) repeat-x; } /* its ticks: one image repeated at the tick step (Timeline.js sets the size) */ /* its marks hang below the line; comments stand above it */
-.tl-ruler span { position: absolute; top: 0; padding-top: 9px; transform: translateX(-50%); color: var(--muted); line-height: 1.2; font-variant-numeric: tabular-nums; }
+.tl-ruler { position: absolute; left: 0; right: 0; bottom: 0; height: 100%; border-top: 1px solid var(--fill); background: linear-gradient(to right, var(--line-strong) 1px, transparent 1px) repeat-x; } /* its ticks: one image repeated at the tick step (Timeline.js sets the size) */ /* its marks hang below the line; comments stand above it */
+.tl-ruler span { position: absolute; top: 0; padding-top: 15px; transform: translateX(-50%); color: var(--muted); line-height: 1.2; font-variant-numeric: tabular-nums; }
 .tl-ruler span::before { content: ""; position: absolute; top: 0; left: 50%; width: 1px; height: 8px; background: var(--muted); } /* a labelled mark: darker, its time centered below */
 .tl-ruler span:first-child { transform: none; }
 .tl-ruler span:first-child::before { left: 0; }
-.tl-comment { position: absolute; z-index: 3; bottom: 26px; width: 16px; height: 22px; margin-left: -8px; padding: 3px 0 0; display: flex; justify-content: center; align-items: flex-start; color: var(--muted); background: none; border: 0; font-family: inherit; font-size: 10px; font-weight: 600; line-height: 1; text-align: center; font-variant-numeric: tabular-nums; cursor: pointer; } /* the comment's number over a 2px line, like the ruler's times under its marks */
-.tl-comment::before { content: ""; position: absolute; left: 7px; bottom: 0; width: 2px; height: 8px; background: currentColor; border-radius: 1px 1px 0 0; }
-.tl-comment:hover, .tl-comment[data-lit] { color: var(--fg); }
-.tl-comment[data-status="seen"] { color: var(--info); }
-.tl-comment[data-status="done"] { color: var(--success); }
+/* A comment on the ruler: a small numbered dot over the ticks; one on a stretch draws a line along it */
+.tl-comment { position: absolute; z-index: 3; top: 1px; width: 14px; height: 14px; margin-left: -7px; padding: 0; display: grid; place-items: center; font: inherit; font-size: 9px; font-weight: 600; line-height: 1; font-variant-numeric: tabular-nums; color: var(--bg); background: var(--muted); border: 0; border-radius: 50%; cursor: pointer; transition: transform var(--dur-press) var(--ease-out), background-color var(--dur) var(--ease-out); }
+.tl-comment[data-status="seen"] { background: var(--info); }
+.tl-comment[data-status="done"] { background: var(--success); }
+.tl-comment:hover, .tl-comment[data-lit] { background: var(--fg); transform: scale(1.15); }
 .tl-scrub { cursor: ew-resize; }
 /* a stretch being picked to comment on, over every track; a comment on a stretch draws it under its number */
 .tl-range { position: absolute; top: 0; bottom: 0; background: color-mix(in srgb, var(--fg) 7%, transparent); box-shadow: inset 1px 0 var(--fg), inset -1px 0 var(--fg); pointer-events: none; }
-.tl-span { position: absolute; bottom: 26px; height: 3px; border-radius: 2px; background: currentColor; color: var(--muted); pointer-events: none; }
+.tl-span { position: absolute; top: 6px; height: 2px; border-radius: 2px; background: currentColor; color: var(--muted); pointer-events: none; }
 .tl-span[data-status="seen"] { color: var(--info); }
 .tl-span[data-status="done"] { color: var(--success); }
+/* A picked gap: a faint band over its stretch of the lane, its Close button in the middle */
+.tl-gap { position: absolute; top: 2px; bottom: 2px; display: grid; place-items: center; background: color-mix(in srgb, var(--fg) 7%, transparent); box-shadow: inset 0 0 0 1px var(--line-strong); border-radius: 3px; pointer-events: none; }
+.tl-gap__close { pointer-events: auto; padding: 0 6px; height: 18px; font: inherit; font-size: 10px; white-space: nowrap; color: var(--bg); background: var(--fg); border: 0; border-radius: 9px; cursor: pointer; }
+.tl-box { position: absolute; z-index: 5; background: color-mix(in srgb, var(--fg) 6%, transparent); box-shadow: inset 0 0 0 1px var(--line-strong); border-radius: 2px; pointer-events: none; } /* the box being dragged to pick blocks */
 .tl-play { position: absolute; z-index: 2; top: 0; bottom: 0; left: var(--tl-name); right: 0; pointer-events: none; } /* holds the playhead over every track */
 /* A media clip's speed when it isn't 1×, and live while a speed edge is dragged */
 .tl-speed { position: absolute; top: 2px; right: 4px; z-index: 2; padding: 0 4px; font-size: 10px; line-height: 14px; font-variant-numeric: tabular-nums; color: var(--fg); background: var(--glass); border-radius: 3px; pointer-events: none; }
 .tl-speed[data-live] { color: var(--bg); background: var(--fg); }
 .tl-head { position: absolute; top: 0; bottom: 0; width: 1px; background: var(--fg); pointer-events: none; }
+.tl-insert { position: absolute; top: 0; bottom: 0; width: 2px; margin-left: -1px; background: var(--fg); pointer-events: none; } /* where a dragged line's stretch lands */
 .tl-skim { position: absolute; top: 0; bottom: 0; width: 1px; background: var(--muted); pointer-events: none; } /* the moment under the pointer, shown in the preview */
 .tl-head::before { content: ""; position: absolute; top: 0; left: -4px; border: 4.5px solid transparent; border-top: 6px solid var(--fg); }
 
 @media (max-width: 900px) {
-  .ed { grid-template-columns: minmax(0, 1fr); }
-  .ed__main { width: auto; height: auto; }
   .ed__comments { max-height: none; }
-  .ed__head { margin: -16px calc(-1 * var(--page-pad)) 0; padding: 0 var(--page-pad); }
   .vw__side { width: 340px; }
 }
 

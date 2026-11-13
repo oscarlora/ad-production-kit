@@ -83,24 +83,35 @@ zoom keyframes set again per stretch, every keyframed track moved with its clips
 across each join.
 
 - **Cuts and pacing** — shots on the voiceover's lines (`place`); `cut` removes a stretch (a pause,
-  a line) from every track and closes the gap, captions and keyframes included. For a real speaker
+  a line) from every track and closes the gap, captions and keyframes included; `move` puts a line
+  (every track's layers over it) at another cut, to reorder lines. For a real speaker
   (UGC, talking head), `tighten` takes out every breath, lead-in and pause by waveform, guarded by the
-  words; run it once the takes are placed, and again after any retake. Then find the pauses it left (breaths
-  it took for speech: `silencedetect` on the `audio` mix, over 0.3 s, at ~24 dB under its speech level, never a
-  fixed level: the mix is loudness-normalized) and `cut` each to ~0.12 s. A soft last sound (the "ss" of "moodiness", the "n" of "iron") can fall outside a line's end: check every cut's tail, high-passed (~3 kHz) for an s and full band for an n or m, and extend to keep it. To drop a word mid-line, cut from
+  words; run it once the takes are placed, and again after any retake. Then find the pauses it left, again after any take swap or speed change: transcribe the `audio` mix (music muted), read it for a phrase said twice (two tries both kept), and take every gap over ~0.25 s between words (a loudness threshold misses pauses filled with a breath or room tone), bound each by where her speech stops and restarts (10 ms loudness steps), and `cut` each to ~0.12 s. A soft last sound (the "ss" of "moodiness", the "n" of "iron") can fall outside a line's end: check every cut's tail, high-passed (~3 kHz) for an s and full band for an n or m, and extend to keep it. A join between two tries starts on the new try's first word: settle every `check` "cuts into sound" by transcribing the mix across it (`audio --from --to --transcribe`), never by assuming, since a stray syllable of the other try ("…dy it took") reads as a bad take. To drop a word mid-line, cut from
   the quiet after the word before it to the closed mouth just before the next word's release (10 ms loudness
   steps show both), never inside sounds that run together, and from a take where the word stands apart if
   one has it; keep both sides in the same take, check by ear, and punch in ~1.2× at the cut, since a smaller
   step reads as a jump.
 - **B-roll** — never a flash of the talking head under ~0.7 s between two B-roll shots (extend the
   B-roll instead), and a B-roll shot or photo ends exactly on the cut it meets, never a frame early, no jump cut inside a B-roll shot under ~0.8 s, and no one in it visibly talking
-  for long (a beat of product in use is fine). Slow a shot down to use only the moment that fits. A take starts on its action, never on the lead-in (an empty frame before she walks in, a blank look, eyes off camera): pick each shot's `in` from a sheet across the whole clip, never a guessed offset, and check its first second on a sheet. A shot
+  for long (a beat of product in use is fine). A B-roll shot holds ~1.5 s or more (shorter shows
+  nothing; run it on over the next phrase), and a shot of an action shows it land (the capsules in
+  her hand, not the bottle tipping). Slow a shot down to use only the moment that fits. A take starts on its action, never on the lead-in (an empty frame before she walks in, a blank look, eyes off camera): pick each shot's `in` from a sheet across the whole clip, never a guessed offset, and check its first second on a sheet. Wherever the speaker looks off camera mid-line (reading her script), cover it with B-roll: check every second she's on screen on a sheet (~0.3 s steps). Under an off-camera voice's line, her
+  own shot runs on, muted (still listening, or holding the gesture she ended on), and she answers ~0.2 s after it ends; a
+  reaction lifted from another moment (a laugh) reads staged. A shot
   goes where its action happens in the story (her bag of bottles as she reaches into it). Stock that
-  illustrates a line can take the top half (`w` 1080, `h` 960) while the speaker's clip moves down to the
-  bottom half (`y` keyframed, held), for that line only. A static stretch (the product held up to the
+  illustrates a line can take the top half (`w` 1080, `h` 960, `y` 480, `feather: { bottom: 160 }` so it fades
+  into her) while the speaker's clip moves down to the bottom half (`y` keyframed, held), for that line only.
+  A retention edit mixes all three across the ad: full-screen B-roll, top-half B-roll over her, and overlays on her. A static stretch (the product held up to the
   camera through the CTA) gets product-in-use B-roll, one shot per phrase, nothing already shown, keeping
   the speaker for the last line and the end card. Check every product shot for a mirrored label
   (**review-ugc-footage**) as you place it.
+- **Cut-out (green screen)** — a speaker filmed for new backgrounds (a green screen or any plain one):
+  `node tools/remove-background.mjs <clips> --out <ad>/mattes` makes each clip's matte (run it in the
+  background: ~0.3 s a frame), and each of her clips takes `matte`. A background track below her changes
+  with the line (a still drifts slowly, `scale` 1 → 1.06); cut out, she can step aside (`x`) for a card.
+  No zooms on her: a cut-out pushing in over a still background reads fake. Beside a card she points
+  at it: check each pointing gesture on a sheet and `flip` the shots where she points away (not one
+  where she points straight up with both hands).
 - **Transitions** — UGC: hard cuts, anything else only on request. Otherwise `transition` on the
   incoming clip: fade for a mood shift, slide, push or wipe for a jump in place or time.
 - **Zooms** — plan them all before keyframing any: list the sentences and key phrases with their times, then give
@@ -137,13 +148,20 @@ across each join.
   marking nothing). Time each effect from its peak (**generate-sfx**, Place). The music sits at one
   flat level (**add-music**); `moves` lists where the picture moves, for effects on actions.
   A noisy or mumbled voice: **generate-voice** (`isolate`, `patch`).
+- **Proof visuals** — big and high-contrast, with a thin `border`, cutting in. A review shows as one card, the
+  photo on the left and the words on the right, both one person's own (a store's results section; never a drawing, or
+  someone else's photo beside a review). A diagram that explains (where fat sits) goes full screen with its point
+  above it as "X = Y". Something she names that has footage (the capsules, an ingredient's source) plays as full-screen
+  B-roll, not an overlay.
 - **Text** — hook, lists and end card as `text` / `rect` / `image` clips. Text overlays cut in, no entrance animation, unless the user asks. Everything sits where both
   feeds show it: inside the 4:5 crop (y 285–1635 on 1920) and above the Reels UI, which covers the
   bottom ~35% (so no text below y ~1250), with room to spare — about 90 px inside the zone on every
   side (no text above y ~375), text blocks at most ~880 px wide (a hook may run a little wider, ~960 px, to stay at 3 lines without shrinking) — and clear of the face and the product. When it won't all fit, the
   safe zone wins, then the face and product, and size gives way: shrink a graphic before moving it
-  out (`check` flags anything outside the zone). Never zoom or shift a shot to make room for text;
-  move the text (over the legs, low in the zone) instead. No text repeats what other text on screen already
+  out (`check` flags anything outside the zone). Never zoom or shift a shot to make room for text alone;
+  move the text (over the legs, low in the zone) instead. An ad built on visual proof (photos, review cards,
+  diagrams) keeps the top ~40% for its text and visuals: frame her talking shots lower and centered (`scale`
+  ~1.25, the top edge held at the frame's top, `x` on her face) so they never cover her face. No text repeats what other text on screen already
   says, and each reads on its own (not a lone "ORGANS": "ORGANS = B12 + IRON"). Text that replaces the
   captions sits in their spot (a list stacking up from it), so the eye never moves; only the hook sits
   higher. Captions stay centered
@@ -159,7 +177,7 @@ across each join.
   stickers (a review, benefit pills) look like the platform's native stickers: flat, no shadow, one
   corner radius and fill for all of them, each thing in its own box (benefits apart from the review).
   The hook text names the problem as the viewer pictures it ("breaking out like you're 14 again"),
-  not a summary of it.
+  not a summary of it, and a hook card shows whole from the first frame, never built up item by item.
 - **Short cuts** — more ads from the same footage, under 30 s: **recut-shorts**.
 - **Other placements** — `reframe --size 1080x1350` (4:5) or `1080x1080` into a new version, then
   check its text on a `frames` sheet.

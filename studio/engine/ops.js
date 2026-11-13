@@ -6,6 +6,7 @@ export const MIN = 0.1; // the shortest a clip or line gets (s)
 const same = (a, b) => Math.abs(a - b) < 1e-3;
 const clamp = (x, lo, hi) => Math.min(Math.max(x, lo), hi);
 const clipOf = (doc, ref) => doc.tracks[ref[0]].clips[ref[1]];
+const named = (x, i) => x.name || `Track ${i + 1}`;
 export const get = (doc, ref) => (ref.length === 3 ? clipOf(doc, ref).lines[ref[2]] : clipOf(doc, ref));
 const timed = (c) => ['video', 'audio'].includes(clipType(c)) && !c.loop; // plays a stretch of its source
 // The clip with its link: a media clip of the same name starting with it on another track (a take's picture and voice).
@@ -126,6 +127,18 @@ export function remove(doc, ref) {
   for (const tr of doc.tracks) tr.clips = (tr.clips || []).filter((c) => !g.has(c));
 }
 
+// The empty stretch around time t on track ti, to close with cutDoc: from the block before it (or 0) to the next one,
+// and only where no video or sound plays on another track (a sound bed aside). null on a block, past the last one, or
+// under a frame long.
+export function gapAt(doc, ti, t) {
+  const spans = (doc.tracks[ti]?.clips || []).flatMap((c) => c.lines || [c]).map((b) => [b.at ?? 0, b.end ?? endOf(b) ?? Infinity]);
+  doc.tracks.forEach((tr, i) => { if (i !== ti) for (const c of tr.clips || []) if (timed(c) && !isBed(c)) spans.push([c.at ?? 0, endOf(c) ?? Infinity]); });
+  if (spans.some(([a, e]) => t >= a - 1e-3 && t < e - 1e-3)) return null;
+  const a = Math.max(0, ...spans.map(([, e]) => e).filter((e) => e <= t + 1e-3)), next = spans.map(([s]) => s).filter((s) => s > t);
+  if (!next.length || Math.min(...next) - a < 1 / (doc.fps || 30)) return null;
+  return [r3(a), r3(Math.min(...next))];
+}
+
 // Delete a clip or caption line and its time from every track: what follows moves up.
 export function rippleRemove(doc, ref) {
   const x = get(doc, ref);
@@ -151,7 +164,7 @@ export function duplicate(doc, ref) {
 export function toTrack(doc, ref, name) {
   const [c] = doc.tracks[ref[0]].clips.splice(ref[1], 1), type = clipType(c);
   delete c.transition;
-  let ti = name ? doc.tracks.findIndex((x, i) => (x.name || `Track ${i + 1}`) === name) : -1;
+  let ti = name ? doc.tracks.findIndex((x, i) => named(x, i) === name) : -1;
   if (ti < 0) {
     const base = type[0].toUpperCase() + type.slice(1), taken = new Set(doc.tracks.map((x) => x.name));
     let n = 1;
@@ -166,18 +179,70 @@ export function toTrack(doc, ref, name) {
 }
 
 // Move the track named `name` to just above the one named `before` (null: to the bottom). → whether it moved.
+// Dropped between two tracks of one group, a track joins it; dropped away from its own group, it leaves it.
 export function orderTrack(doc, name, before) {
-  const named = (x, i) => x.name || `Track ${i + 1}`, from = (doc.tracks || []).findIndex((x, i) => named(x, i) === name);
+  const from = (doc.tracks || []).findIndex((x, i) => named(x, i) === name);
   const target = before == null ? null : doc.tracks.find((x, i) => named(x, i) === before);
   if (from < 0 || (before != null && !target) || target === doc.tracks[from]) return false;
   const [tr] = doc.tracks.splice(from, 1), to = target ? doc.tracks.indexOf(target) : doc.tracks.length;
   doc.tracks.splice(to, 0, tr);
-  return to !== from;
+  const g = tr.group, prev = doc.tracks[to - 1]?.group, next = doc.tracks[to + 1]?.group;
+  if (prev && prev === next) tr.group = prev;
+  else if (g && prev !== g && next !== g) delete tr.group;
+  return to !== from || tr.group !== g;
+}
+
+// Groups: a track's `group` names the group it is in (a folder of tracks, as in design apps' layers); a group's tracks
+// sit together, the first drawing on top. → whether the document changed.
+// The named tracks go in one group (the first one's group among them, else a new "Group N"), together where the
+// topmost of them was.
+export function groupTracks(doc, names) {
+  const tracks = doc.tracks || [], picked = tracks.filter((x, i) => names.includes(named(x, i)));
+  if (!picked.length) return false;
+  const taken = new Set(tracks.map((x) => x.group));
+  let n = 1;
+  while (taken.has(`Group ${n}`)) n++;
+  const g = picked.find((x) => x.group)?.group || `Group ${n}`, members = tracks.filter((x) => picked.includes(x) || x.group === g);
+  const at = tracks.slice(0, tracks.indexOf(members[0])).filter((x) => !members.includes(x)).length;
+  for (const m of members) m.group = g;
+  doc.tracks = tracks.filter((x) => !members.includes(x));
+  doc.tracks.splice(at, 0, ...members);
+  return true;
+}
+// The named tracks leave their groups: a whole group dissolves where it is; part of one moves out just above it.
+export function ungroupTracks(doc, names) {
+  const out = (doc.tracks || []).filter((x, i) => x.group && names.includes(named(x, i)));
+  for (const g of new Set(out.map((x) => x.group))) {
+    const members = doc.tracks.filter((x) => x.group === g), leaving = members.filter((x) => out.includes(x));
+    for (const x of leaving) delete x.group;
+    if (leaving.length === members.length) continue;
+    doc.tracks = doc.tracks.filter((x) => !leaving.includes(x));
+    doc.tracks.splice(doc.tracks.indexOf(members.find((x) => !leaving.includes(x))), 0, ...leaving);
+  }
+  return out.length > 0;
+}
+export function renameGroup(doc, group, to) {
+  const tracks = doc.tracks || [];
+  if (!to || to === group || tracks.some((x) => x.group === to) || !tracks.some((x) => x.group === group)) return false;
+  for (const x of tracks) if (x.group === group) x.group = to;
+  return true;
+}
+// A whole group dragged above the track `before` (null: the bottom); never into another group.
+export function orderGroup(doc, group, before) {
+  const tracks = doc.tracks || [], members = tracks.filter((x) => x.group === group);
+  let target = before == null ? null : tracks.find((x, i) => named(x, i) === before);
+  if (!members.length || members.includes(target)) return false;
+  if (target?.group) target = tracks.find((x) => x.group === target.group); // into another group: above it instead
+  const rest = tracks.filter((x) => !members.includes(x));
+  rest.splice(target ? rest.indexOf(target) : rest.length, 0, ...members);
+  const moved = rest.some((x, i) => x !== tracks[i]);
+  doc.tracks = rest;
+  return moved;
 }
 
 // Rename the track named `name` (not to a name another track has). → whether it was renamed.
 export function renameTrack(doc, name, to) {
-  const named = (x, i) => x.name || `Track ${i + 1}`, tr = (doc.tracks || []).find((x, i) => named(x, i) === name);
+  const tr = (doc.tracks || []).find((x, i) => named(x, i) === name);
   if (!tr || !to || doc.tracks.some((x, i) => named(x, i) === to)) return false;
   tr.name = to;
   return true;
@@ -185,17 +250,24 @@ export function renameTrack(doc, name, to) {
 
 // Delete the track named `name`, with its clips. → whether the document had it.
 export function removeTrack(doc, name) {
-  const i = (doc.tracks || []).findIndex((x, k) => (x.name || `Track ${k + 1}`) === name);
+  const i = (doc.tracks || []).findIndex((x, k) => named(x, k) === name);
   if (i >= 0) doc.tracks.splice(i, 1);
   return i >= 0;
 }
 
 // A text's look: what a style template sets. Its size, width, line height and anchor stay the clip's own.
 export const LOOK = ['font', 'weight', 'italic', 'color', 'accent', 'case', 'letterSpacing', 'stroke', 'strokeWidth', 'background', 'shadow'];
-// Give a text or captions clip a look (a template's, or another text's), in place of its own.
-export function restyle(doc, ref, look) {
+// A picture's or shape's look: its corners, frame and shadow.
+export const CLIP_LOOK = ['radius', 'border', 'shadow'];
+export const lookKind = (c) => (['text', 'captions'].includes(clipType(c)) ? 'text' : ['image', 'video', 'rect'].includes(clipType(c)) ? 'clip' : null);
+// Give a clip a look of its kind (a template's, or another clip's), in place of its own; a clip of another kind keeps its own.
+export function restyle(doc, ref, look, kind = 'text') {
   const c = clipOf(doc, ref);
-  if (!['text', 'captions'].includes(clipType(c))) return;
+  if (lookKind(c) !== kind) return;
+  if (kind === 'clip') {
+    for (const k of CLIP_LOOK) if (look[k] == null) delete c[k]; else c[k] = structuredClone(look[k]);
+    return;
+  }
   c.style = { ...Object.fromEntries(Object.entries(c.style || {}).filter(([k]) => !LOOK.includes(k))), ...structuredClone(look) };
 }
 
@@ -236,7 +308,7 @@ export function addText(doc, t, until) {
 // Mute or unmute a track by name; unmuting also unmutes its clips, all but freeze frames (rate under 0.1). → whether
 // the document has that track.
 export function muteTrack(doc, name, mute) {
-  const tr = (doc.tracks || []).find((x, i) => (x.name || `Track ${i + 1}`) === name);
+  const tr = (doc.tracks || []).find((x, i) => named(x, i) === name);
   if (!tr) return false;
   if (mute) tr.mute = true;
   else { delete tr.mute; for (const c of tr.clips || []) if (c.mute && !((c.rate ?? 1) < 0.1)) delete c.mute; }

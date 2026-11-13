@@ -1,6 +1,6 @@
 ---
 name: make-ai-song
-description: Make an AI song video ad — a sung song (Suno) is the whole audio, animated clips act out each line, and word-by-word captions let people sing along. Use whenever someone wants an AI song ad, a singing ad, a jingle-style or music-video ad, or says "make a song ad". Covers concept, lyrics, the song and its word timings, sheets, storyboard, MiniMax clips, the edit, captions, versions, and delivery.
+description: Make an AI song video ad — a sung song (Suno) is the whole audio, animated clips act out each line, and word-by-word captions let people sing along. Use whenever someone wants an AI song ad, a singing ad, a jingle-style or music-video ad, or says "make a song ad". Covers concept, lyrics, the song and its word timings, sheets, storyboard, Seedance clips, the edit, captions, versions, and delivery.
 ---
 
 # Make AI song
@@ -51,24 +51,23 @@ Always use Suno's timings: transcribing singing mishears lines.
 
 ## 5. Storyboard
 
-Group the lines into clips no longer than MiniMax allows (**write-video-prompt**, Video models), cutting
+Group the lines into clips no longer than the model allows (**write-video-prompt**, Video model), cutting
 only where a line starts. Split any line longer than about 6 s into two shots. One storyboard sheet
 per clip in `storyboards/`, its shots as vertical 9:16 panels: three in a 16:9 row, four as a 2×2 grid in 9:16, two
 side by side in 1:1. No text in the pictures.
 
 ## 6. Clips
 
-One MiniMax H3 run per clip, with the storyboard sheet and the character sheets as references
-(**write-video-prompt**, Video models).
+One run per clip, with the storyboard sheet and the character sheets as references
+(**write-video-prompt**, Video model).
 
     node tools/generate-video.mjs --prompt-file <ad>/prompts/clip-01.txt --image <sheet> --image <hero> \
-      [--image <cast>] [--image <product>] --aspect 9:16 --duration <clip length, rounded up> \
+      [--image <cast>] [--image <product>] --aspect 9:16 --duration <clip length, rounded up> --no-audio \
       --out <ad>/clips/clip-01.mp4 --timeout 1500
 
-The prompt, in MiniMax's layout (**write-video-prompt**), times each shot
-(`[Shot 2] At 00:05.100, the camera cuts to …`) and keeps the rules: match each panel, hard cuts,
-each panel fills the frame edge to edge, every surface plain, nobody speaks, both sound fields
-`N/A`.
+The prompt, in Seedance's layout (**write-video-prompt**), times each shot in its timeline and keeps
+the rules: match each panel, hard cuts, each panel fills the frame edge to edge, every surface plain,
+nobody speaks.
 To fix one bad shot, make a new still for it and animate it alone (`--first-frame <still>
 --duration 6`), not the whole clip.
 

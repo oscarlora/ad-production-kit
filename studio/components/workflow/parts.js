@@ -1,7 +1,7 @@
 'use client';
 import { useEffect, useRef, useState } from 'react';
 import { fileUrl } from '../../lib/client/api.js';
-import { IcArchive, IcCheck, IcPanelClose, IcPen, IcPlay, IcX } from '../icons.js';
+import { IcArchive, IcCheck, IcPanelClose, IcPen, IcPlay, IcUp, IcX } from '../icons.js';
 
 // A brand file's text, refetched when its version changes; null until it arrives.
 export function useFileText(ws, brand, p, v) {
@@ -116,14 +116,18 @@ export function Comments({ comments, focus, lit, onLit, onPick, onReview, onActi
   );
 }
 
-// One comment as a card: what it's on and its stage, the thread, then what the user can do at that stage. A comment ready
-// to review gets Approve, Watch change and Send back (with what's still off); the rest only Edit (while waiting) and
-// Delete, on hover.
-function Comment({ n, focused, lit, onLit, onPick, onReview, onAction, lead }) {
+// One comment as a little chat: what it's on and its stage, the thread, a ready one's Approve and Watch change, and, while
+// picked, a reply field (a reply opens a new round); Edit (while waiting: the text moves into that field) and Delete show
+// on hover.
+export function Comment({ n, focused, lit, onLit, onPick, onReview, onAction, lead }) {
   const [state, label] = STAGE[n.status] || STAGE.open;
-  const [say, setSay] = useState(null); // what's still off, being written
-  const [edit, setEdit] = useState(null); // the comment's text, being edited
+  const [say, setSay] = useState(''); // the reply, or the comment's text being edited, in the one field
+  const [edit, setEdit] = useState(false);
+  const field = useRef(null);
   const pick = (e) => { if (!e.target.closest('button, textarea')) onPick(n); };
+  const done = () => { setSay(''); setEdit(false); };
+  const send = () => { const text = say.trim(); if (text) { onAction(edit ? { comment: { ...n, text } } : { sendBack: { id: n.id, text } }); done(); } };
+  const startEdit = () => { setEdit(true); setSay(n.text); requestAnimationFrame(() => field.current?.focus()); };
   return (
     <li
       className="ed-comment" data-id={n.id} data-status={n.status} data-lit={lit || undefined} aria-current={focused || undefined} onClick={pick}
@@ -134,30 +138,30 @@ function Comment({ n, focused, lit, onLit, onPick, onReview, onAction, lead }) {
         <span className="ed-comment__stage"><Dot state={state} />{label}</span>
         {n.status !== 'approved' && (
           <span className="ed-comment__more">
-            {n.status === 'open' && !n.edit && edit == null && (
-              <button type="button" className="ed-comment__act" title="Edit" aria-label="Edit comment" onClick={() => setEdit(n.text)}><IcPen /></button>
+            {n.status === 'open' && !n.edit && !edit && (
+              <button type="button" className="ed-comment__act" title="Edit" aria-label="Edit comment" onClick={startEdit}><IcPen /></button>
             )}
             <button type="button" className="ed-comment__act" title="Delete" aria-label="Delete comment" onClick={() => onAction({ remove: n.id })}><IcX /></button>
           </span>
         )}
       </div>
-      {edit != null
-        ? <Compose className="ft-compose" value={edit} onChange={setEdit} onSend={(text) => onAction({ comment: { ...n, text } })} onClose={() => setEdit(null)} />
-        : (
-          <div className="ft-thread">
-            <Messages msgs={chat([n])} />
-            {say != null && (
-              <div className="ft-say" data-you>
-                <Compose className="ft-compose--bubble" placeholder="What's still off?" value={say} onChange={setSay} onSend={(text) => onAction({ sendBack: { id: n.id, text } })} onClose={() => setSay(null)} />
-              </div>
-            )}
-          </div>
-        )}
-      {n.status === 'done' && say == null && (
+      <div className="ft-thread"><Messages msgs={chat([n])} /></div>
+      {n.status === 'done' && (
         <div className="ed-comment__acts">
           <button type="button" className="btn btn--mini btn--primary" onClick={() => onAction({ approve: n.id })}><IcCheck />Approve</button>
           {onReview && <button type="button" className="btn btn--mini" onClick={() => onReview(n)}><IcPlay />Watch change</button>}
-          <button type="button" className="btn btn--mini" onClick={() => setSay('')}>Send back</button>
+        </div>
+      )}
+      {(focused || edit) && n.status !== 'approved' && (
+        <div className="ed__add-row">
+          <textarea
+            ref={field} autoFocus className="field ed__add" rows={1} value={say} placeholder="Reply…" onChange={(e) => setSay(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); }
+              if (e.key === 'Escape' && edit) { e.preventDefault(); done(); }
+            }}
+          />
+          <button type="button" className="btn btn--primary ed__send" aria-label={edit ? 'Save edit' : 'Send reply'} title={edit ? 'Save (Enter)' : 'Send (Enter)'} disabled={!say.trim()} onClick={send}>{edit ? <IcCheck /> : <IcUp />}</button>
         </div>
       )}
     </li>

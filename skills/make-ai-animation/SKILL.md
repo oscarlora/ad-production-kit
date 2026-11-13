@@ -85,7 +85,7 @@ each line and what we see, for planning; the shots show as cards from Frames on.
   once free, they move left to right). Fast, never frantic: the thing to watch stays near the same
   spot in frame across a cut.
 - **Narrated: plan the clips** in a table under the shots: consecutive shots grouped into clips no
-  longer than the model allows (**write-video-prompt**, Video models), whole lines only.
+  longer than the model allows (**write-video-prompt**, Video model), whole lines only.
 - **Sound effects** only: each shot's sounds, specific to its action and timed to it (a plate
   clattering). A recurring sound gets the same words every time. No music, voices or ambience.
 
@@ -169,7 +169,7 @@ follow **write-prompt**'s "How a model reads a prompt".
 ## 6. Clips
 
 Every clip prompt follows **write-prompt**'s "How a model reads a prompt", above all **animate from
-the frame, not against it**. Each prompt stands alone, written like a director's notes and laid out in its model's syntax
+the frame, not against it**. Each prompt stands alone, written like a director's notes and laid out in the model's syntax
 (**write-video-prompt**):
 
 - **TASK:** animate the frame(s) for N seconds keeping their exact style, drawing and light.
@@ -177,25 +177,24 @@ the frame, not against it**. Each prompt stands alone, written like a director's
 - **WHO IS WHO:** each person by position and look.
 - **ACTION:** a timeline of beats, each tied to a second (the word's time minus the clip's start).
   When several people act in turn, only one moves at a time. Every beat is new, and everyone is still moving at the end.
-- **SOUND:** only this shot's sounds, placed in time; no music, chatter or ambience, said each
+- **SOUND:** only this shot's sounds, placed in time; no music, chatter or ambience, said the
   model's way.
 
-**Narrated:** MiniMax H3, or Seedance 2.5 for longer clips (**write-video-prompt**, Video models). One
-run per planned clip: its shots' frames in order as `--image` refs, then the sheets of who's in it
-(9 images at most on MiniMax). The prompt gives each shot its frame and start second, with a hard cut at each,
+**Narrated:** one run per planned clip (**write-video-prompt**, Video model): its shots' frames in
+order as `--image` refs, then the sheets of who's in it. The prompt gives each shot its frame and start second, with a hard cut at each,
 and SOUND carries the effects, so every clip comes back with its own sound. Name each clip after its
 first shot (`clips/clip-07.mp4` covers shots 07–12). Run independent clips in parallel (long
 renders: AGENTS.md).
 
-    node tools/generate-video.mjs --model minimax-h3 --prompt-file <ad>/prompts/clip-07.txt \
+    node tools/generate-video.mjs --prompt-file <ad>/prompts/clip-07.txt \
       --image <ad>/frames/frame-07.png --image <ad>/frames/frame-08.png --image <ad>/sheets/<setting>.png \
       --aspect 9:16 --duration <clip seconds, rounded up> --out <ad>/clips/clip-07.mp4 --timeout 1500
 
-**Dialogue:** one Seedance 2.5 run per shot from its frame; it makes the voices and sound too. Leave
-`--aspect` off (the frame sets the shape).
+**Dialogue:** one run per shot from its frame; it makes the voices and sound too. Leave `--aspect`
+off (the frame sets the shape).
 
     node tools/generate-video.mjs --prompt-file <ad>/prompts/clip-01.txt \
-      --model seedance-2.5 --first-frame <ad>/frames/frame-01.png \
+      --first-frame <ad>/frames/frame-01.png \
       --duration <shot seconds> --out <ad>/clips/clip-01.mp4 --timeout 900
 
 Dialogue prompts add two sections:

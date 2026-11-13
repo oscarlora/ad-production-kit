@@ -138,11 +138,12 @@ export function decideScene(dir, { scene, ticks, decision, text }) {
   return saveComment(dir, { file: 'footage.json', quote: key, text: `${decision === 'approved' ? 'Approved' : 'Reshoot'}${said ? `: ${said}` : ''}` });
 }
 
-// The brand's saved text styles (the editor's templates): inputs/text-styles.json, a list of looks (a text style's
-// font, weight, colors, stroke, background and shadow).
-export function saveLooks(inputs, looks) {
-  if (!Array.isArray(looks) || looks.length > 48 || looks.some((k) => !k || typeof k !== 'object' || Array.isArray(k))) throw new Error('bad styles');
-  writeFileSync(join(inputs, 'text-styles.json'), JSON.stringify(looks, null, 1) + '\n');
+// The brand's saved styles (the editor's templates), a list of looks per kind: text (inputs/text-styles.json: a text's
+// font, weight, colors, stroke, background and shadow) or clip (inputs/clip-styles.json: a picture's or shape's
+// corners, frame and shadow).
+export function saveLooks(inputs, looks, kind = 'text') {
+  if (!['text', 'clip'].includes(kind) || !Array.isArray(looks) || looks.length > 48 || looks.some((k) => !k || typeof k !== 'object' || Array.isArray(k))) throw new Error('bad styles');
+  writeFileSync(join(inputs, `${kind}-styles.json`), JSON.stringify(looks, null, 1) + '\n');
   return { ok: true };
 }
 

@@ -6,16 +6,14 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { apiBase, editApi, fileUrl, mediaUrl, openFile } from '../../lib/client/api.js';
 import { clock } from '../../lib/client/format.js';
 import { isTyping, useStored, useUndo } from '../../lib/client/hooks.js';
-import { ORIGIN, compose, isBed, joint, r3, reframe, unstack } from '../../engine/doc.js';
+import { ORIGIN, compose, cutDoc, isBed, joint, moveStretch, r3, reframe, unstack } from '../../engine/doc.js';
 import * as ops from '../../engine/ops.js';
-import { IcCursor, IcPause, IcPlay, IcQuote, IcSplit, IcType, IcUp } from '../icons.js';
-import { Compose, Comments, commentNumbers } from '../workflow/parts.js';
+import { IcAlert, IcCursor, IcDl, IcGear, IcOpen, IcPause, IcPlay, IcQuote, IcSplit, IcType, IcUp } from '../icons.js';
+import { Comment, Compose, commentNumbers } from '../workflow/parts.js';
 import { SafeZones, useZones, ZoneButton } from '../Player.js';
-import Inspector, { BrandColors, Settings } from './Inspector.js';
+import Inspector, { BrandColors, Pop, Settings } from './Inspector.js';
 import Timeline, { labelOf } from './Timeline.js';
-import Trim from './Trim.js';
 
-const SIMPLE_KEY = 'ad-production-kit-studio:timeline-simple';
 const VIDEO = /\.(mp4|mov|m4v|webm)$/i;
 const PREVIEW_W = 720;
 
@@ -52,9 +50,13 @@ export default function Editor({ ws, brand, ad, edit }) {
   const [range, setRange] = useState(null); // a stretch picked on the timeline for the next comment: [from, to]
   const addRef = useRef(null);
   const [off, setOff] = useState(() => new Set()); // track names hidden in the preview (never written to the doc)
-  const [trimId, setTrimId] = useState(null); // the clip open in the trim panel
   const [sel, setSel] = useState(null); // the picked clip or caption line: { id, li (the line's index in its file) }
+  // The settings floating by what was clicked: a clip's, where it was clicked ({ kind: 'clip', rect, x, y, side }), or
+  // the edit's own, by the gear ({ kind: 'video', … }). Pop places it.
+  const [pop, setPop] = useState(null);
+  const closePop = useCallback(() => setPop(null), []);
   const [also, setAlso] = useState([]); // more picked with it (Shift or ⌘ click), for one change to them all
+  const [gap, setGap] = useState(null); // a picked empty stretch to close: { track (its name), t (a moment in it) }
   useEffect(() => { if (!sel) setAlso([]); }, [sel]);
   const api = editApi(ws, brand, ad);
   // The edit's documents as last read from disk or changed here: { own: { file, text, doc }, base (a version's) }.
@@ -84,57 +86,29 @@ export default function Editor({ ws, brand, ad, edit }) {
     write(file, after, before);
     recordUndo({ file, before, after });
   };
-  const rootRef = useRef(null), tlRef = useRef(null);
+  const rootRef = useRef(null);
   // The fixed timeline's height sizes the preview above it, watched on whichever element the timeline is now (it
   // remounts), so the preview never runs under it.
   const tlSeen = useRef(null);
   const tlMount = useCallback((el) => {
-    tlRef.current = el;
     tlSeen.current?.disconnect();
     tlSeen.current = el && new ResizeObserver(() => rootRef.current?.style.setProperty('--tl-h', `${el.offsetHeight}px`));
     tlSeen.current?.observe(el);
   }, []);
-  // Dragging the timeline's top edge resizes it between its top row and all its tracks; let go, it snaps to the
-  // nearer one; a double click snaps to the other. Snapped down is simplified mode (no tracks), remembered in this browser.
-  const [simple, setSimple] = useState(() => { try { return localStorage.getItem(SIMPLE_KEY) === '1'; } catch { return false; } });
-  const [tlDrag, setTlDrag] = useState(null); // { h, snap? }: the timeline's height while its edge is dragged or snapping
-  const edge = useRef(null);
-  const sizes = () => { // its top row's and all its tracks' heights (the tracks once tlDrag renders them)
-    const el = tlRef.current, border = el.offsetHeight - el.clientHeight;
-    return { min: el.querySelector('.tl-track--head').offsetHeight + border, max: el.querySelector('.tl').offsetHeight + border };
-  };
-  const snap = (down) => {
-    const { min, max } = sizes();
-    setTlDrag({ h: down ? min : max, snap: true });
-    setTimeout(() => {
-      setTlDrag(null);
-      setSimple(down);
-      try { localStorage.setItem(SIMPLE_KEY, down ? '1' : '0'); } catch {}
-    }, 180);
-  };
-  const edgeDown = (e) => {
+  // The timeline's height, dragged on its top edge (a grip in the middle marks it) and remembered in this browser: from
+  // its top row to all its tracks, never taller than they are (it caps the height). A double click collapses it to
+  // its top row, or opens it back to all its tracks.
+  const [tlH, setTlH] = useStored('ad-production-kit-studio:timeline-h', null);
+  const tlSpan = (el) => ({ min: el.querySelector('.tl-track--head').offsetHeight + 1, max: el.querySelector('.tl-in').offsetHeight + 1 });
+  const toggleTl = (e) => { const { min } = tlSpan(e.currentTarget.parentElement); setTlH(tlH && tlH <= min + 2 ? null : min); };
+  const resizeTl = (e) => {
     if (e.button !== 0) return;
-    e.currentTarget.setPointerCapture(e.pointerId);
-    edge.current = { y: e.clientY, h: tlRef.current.offsetHeight, moved: false };
-  };
-  const edgeMove = (e) => {
-    const d = edge.current;
-    if (!d || Math.abs(e.clientY - d.y) < 3 && !d.moved) return;
-    d.moved = true;
-    if (!tlDrag) { setTlDrag({ h: d.h }); return; } // renders the tracks first, so they can be measured
-    const { min, max } = sizes();
-    setTlDrag({ h: Math.max(min, Math.min(max, d.h - (e.clientY - d.y))) });
-  };
-  const edgeUp = () => {
-    const d = edge.current;
-    edge.current = null;
-    if (!d?.moved || !tlDrag) return setTlDrag(null);
-    const { min, max } = sizes();
-    snap(tlDrag.h < (min + max) / 2);
-  };
-  const edgeToggle = () => {
-    setTlDrag({ h: tlRef.current.offsetHeight });
-    requestAnimationFrame(() => snap(!simple));
+    e.preventDefault();
+    const el = e.currentTarget.parentElement, y0 = e.clientY, h0 = el.offsetHeight, { min, max } = tlSpan(el);
+    const onMove = (ev) => setTlH(Math.round(Math.min(max, window.innerHeight * 0.75, Math.max(min, h0 - (ev.clientY - y0)))));
+    const onUp = () => { window.removeEventListener('pointermove', onMove); window.removeEventListener('pointerup', onUp); };
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
   };
   const toggleTrack = useCallback((name) => setOff((s) => { const n = new Set(s); n.has(name) ? n.delete(name) : n.add(name); return n; }), []);
   const live = useRef({ t: 0, busy: false, pending: null, stop: null, until: null, starting: false, actx: null, c0: 0, t0: 0, raf: 0 });
@@ -365,19 +339,56 @@ export default function Editor({ ws, brand, ad, edit }) {
   const holding = !!sel;
   useEffect(() => {
     if (!holding) return undefined;
-    const onDown = (e) => { if (!e.target.closest?.('button, a, input, select, textarea, label, .ed__stage, .insp, .trim, .tl-clip, .tl-scrub, .tl-name, .ed__edge')) setSel(null); };
+    const onDown = (e) => { if (!e.target.closest?.('button, a, input, select, textarea, label, .ed__stage, .pop, .tl-clip, .tl-scrub, .tl-name, .ed__notes')) setSel(null); };
     document.addEventListener('pointerdown', onDown);
     return () => document.removeEventListener('pointerdown', onDown);
   }, [holding]);
   // add (Shift or ⌘): one more picked, or one fewer when it already is.
   const select = (c, li, add) => {
+    setGap(null);
     if (!c) return setSel(null);
     lenOf(c);
     setMode('edit');
+    setPop(null); // its settings open where it is clicked, once the press is let go without a drag
     const one = { id: c.id, li: li == null ? null : target(c, li).ref[2] }, same = (x) => x.id === one.id && x.li === one.li;
     if (!add || !sel) { setAlso([]); return setSel(one); }
     if (same(sel)) { setSel(also[0] || null); return setAlso(also.slice(1)); }
     setAlso(also.some(same) ? also.filter((x) => !same(x)) : [...also, one]);
+  };
+  // Several picked at once (a box dragged over the timeline).
+  const selectMany = (list) => {
+    const ones = list.map(({ c, li }) => { lenOf(c); return { id: c.id, li: li == null ? null : target(c, li).ref[2] }; });
+    if (ones.length) setMode('edit');
+    setPop(null);
+    setGap(null);
+    setSel(ones[0] || null);
+    setAlso(ones.slice(1));
+  };
+  // The picked gap as it now is ([from, to] on the timeline), and closing it: its time leaves every track (the code path
+  // of edit-video's cut). In a version, each part goes from the document it belongs to: its own hook before the join,
+  // the shared body after.
+  const gapTi = gap && doc ? doc.tracks.findIndex((tr) => tr.name === gap.track) : -1;
+  const gapRange = gapTi >= 0 ? ops.gapAt(doc, gapTi, gap.t) : null;
+  const closeGap = () => {
+    if (!gapRange) return;
+    const [a, b] = gapRange, head = cur.base ? joint(cur.own.doc, cur.base.doc)[1] : Infinity;
+    let from = cur;
+    for (const [x, y] of [[Math.max(a, head), b], [a, Math.min(b, head)]].filter(([x, y]) => y > x)) {
+      const w = where(x), d = copyOf(w.key, from);
+      cutDoc(d, x + w.shift, y + w.shift);
+      commit(w.key, d, from);
+      from = { ...from, [w.key]: { ...from[w.key], text: `${JSON.stringify(d, null, 1)}\n`, doc: d } };
+    }
+    setGap(null);
+  };
+  // A talking clip's stretch of the edit, every track's layers over it, moved to the cut at t (moveStretch, edit-video's
+  // move): within a version's hook or within the body, never the body's first clip, which opens every version.
+  const moveClipStretch = (c, t) => {
+    const [start, head] = cur.base ? joint(cur.own.doc, cur.base.doc) : [0, Infinity], key = c.end <= head + 1e-3 ? 'own' : 'base';
+    const shift = key === 'base' ? start - head : 0, a = r3(c.at + shift), b = r3(c.end + shift), to = r3(t + shift);
+    if ((key === 'own') !== (t <= head + 1e-3) || (cur.base && key === 'base' && (Math.abs(a - start) < 1e-3 || Math.abs(to - start) < 1e-3))) return setError('Move a line within the hook or within the body, after its first clip.');
+    commit(key, moveStretch(copyOf(key), a, b, to));
+    setSel(null);
   };
   // Change a clip's document: fn(doc, ref, shift) may return the ref to pick next (null: nothing).
   const change = (c, li, fn, from = cur) => {
@@ -392,6 +403,7 @@ export default function Editor({ ws, brand, ad, edit }) {
   // without it saves the last one.
   const dragged = useRef(null);
   const changePicked = (fn, live) => {
+    if (fn === null) { const s0 = dragged.current; dragged.current = null; if (s0) setRaws(s0.from); return; } // a preview dropped
     if (!picked) return;
     const s = dragged.current ||= { from: cur, tgs: picks.map((p) => target(p.c, p.li)) };
     const docs = {};
@@ -428,7 +440,7 @@ export default function Editor({ ws, brand, ad, edit }) {
   // Space plays, arrows step a frame (with Shift, a second); N writes a comment, ↑ / ↓ move between comments, A approves
   // the picked one and W watches its change. Editing: S splits at the playhead, T adds text, ⌫ deletes the picked clip
   // (Shift: and its time), ⌘D duplicates it, [ and ] bring its start or end to the playhead, , and . nudge it a frame
-  // (Shift: ten), Enter opens its trim panel, Esc lets go of it. V and C switch
+  // (Shift: ten), Esc lets go of it. V and C switch
   // to editing and commenting.
   useEffect(() => {
     const onKey = (e) => {
@@ -438,12 +450,13 @@ export default function Editor({ ws, brand, ad, edit }) {
       if (e.metaKey || e.ctrlKey) return;
       if (k === 's') tools.split();
       if (k === 't') { e.preventDefault(); tools.text(); }
+      if (gapRange && !picked && (e.key === 'Backspace' || e.key === 'Delete')) { e.preventDefault(); closeGap(); }
+      if (gapRange && e.key === 'Escape') setGap(null);
       if (picked) {
         if (e.key === 'Backspace' || e.key === 'Delete') { e.preventDefault(); tools.remove(e.shiftKey); }
         if (e.key === '[' || e.key === ']') tools.retime(e.key === '[' ? 'start' : 'end', live.current.t - (e.key === '[' ? block.at : block.end));
         if (',.<>'.includes(e.key)) tools.retime('move', ((e.key === ',' || e.key === '<' ? -1 : 1) * (e.shiftKey ? 10 : 1)) / doc.fps);
-        if (e.key === 'Escape' && !draft && !trimId) setSel(null);
-        if (e.key === 'Enter' && !line && (picked.type === 'video' || picked.type === 'audio')) { pause(); setTrimId(picked.id); }
+        if (e.key === 'Escape' && !draft) pop ? setPop(null) : setSel(null);
       }
       if (k === 'v') setMode('edit');
       if (k === 'c') setMode('comment');
@@ -484,6 +497,7 @@ export default function Editor({ ws, brand, ad, edit }) {
     // inside a clip's corners: on the same side of all four edges
     const inside = (q) => { const s = q.map(([ax, ay], i) => { const [bx, by] = q[(i + 1) % 4]; return (bx - ax) * (y - ay) - (by - ay) * (x - ax) >= 0; }); return s.every((v) => v === s[0]); };
     const c = cur && clips.find((k) => k.id === boxes.findLast(([, q]) => inside(q))?.[0]);
+    pressed.current = c ? { x: e.clientX, y: e.clientY } : null;
     if (!c) return setSel(null);
     const li = c.lines ? c.lines.findIndex((l) => now >= l.at && now < l.end) : -1;
     const add = e.shiftKey || e.metaKey;
@@ -509,11 +523,13 @@ export default function Editor({ ws, brand, ad, edit }) {
     }
     setDraft((d) => d && { ...d, box: [Math.min(d.from[0], x1), Math.min(d.from[1], y1), Math.abs(x1 - d.from[0]), Math.abs(y1 - d.from[1])] });
   };
+  const pressed = useRef(null); // where a clip on the frame was pressed
   const onPointerUp = () => {
-    const m = moving.current;
-    moving.current = null;
+    const m = moving.current, p = pressed.current;
+    moving.current = pressed.current = null;
     setGuides(null);
     if (m?.moved) commit(m.key, m.d, m.from);
+    else if (p && mode === 'edit') setPop({ kind: 'clip', rect: stageRef.current.getBoundingClientRect(), ...p, side: 'right' }); // a click: its settings, beside the frame
     if (mode === 'comment') requestAnimationFrame(() => composeRef.current?.focus()); // the click itself takes focus off the new field
   };
 
@@ -534,9 +550,24 @@ export default function Editor({ ws, brand, ad, edit }) {
     api({ comment: { t: draft.t, box, text, plan: plan.file } }).catch((e) => setError(e.message));
   };
   const commentAction = (body) => api(body).catch((e) => setError(e.message));
-  const pick = (n) => { setMode('comment'); setFocus(n.id); seek(n.t); };
+  // at: where it was clicked ({ rect, x, y, side }, or a pin's rect); else its pin on the timeline.
+  const pick = (n, at) => {
+    setFocus(n.id);
+    seek(n.t);
+    if (at?.rect) return setPop({ kind: 'note', id: n.id, ...at });
+    const r = at || document.querySelector(`.tl-comment[data-id="${n.id}"]`)?.getBoundingClientRect(); // a pin's rect
+    if (r) setPop({ kind: 'note', id: n.id, rect: r, x: r.left + r.width / 2, side: 'above' });
+  };
   // To commenting, the cursor in the add-a-comment field.
-  const toComment = () => { setMode('comment'); requestAnimationFrame(() => addRef.current?.focus()); };
+  // Comments have no list: each shows as its numbered pin on the timeline and, when it marks a spot, a numbered circle
+  // on the frame; a click on either opens it in a popover there ({ kind: 'note', id }). A new one without a spot is
+  // written in a popover over the ruler ({ kind: 'add' }), at the picked stretch or the playhead.
+  const above = (el) => { const r = el.getBoundingClientRect(); return { rect: r, x: r.left + r.width / 2, side: 'above' }; };
+  const toComment = () => {
+    setMode('comment');
+    const el = document.querySelector('.tl-range') || document.querySelector('.tl-head');
+    if (el) setPop({ kind: 'add', ...above(el) });
+  };
   // Plays what changed for a comment: its changed stretch (or its moment), with a second either side.
   const review = (n) => {
     const [a, b] = n.span || [n.t, n.t + 1];
@@ -548,32 +579,38 @@ export default function Editor({ ws, brand, ad, edit }) {
   const comments = useMemo(() => edit.comments.filter((n) => (n.plan || 'edit.json') === plan.file), [edit.comments, plan.file]);
   const pending = useMemo(() => comments.filter((n) => n.status !== 'approved'), [comments]);
   const nums = useMemo(() => commentNumbers(comments), [comments]);
+  const pendingOrAny = (id) => comments.find((n) => n.id === id);
   // Only open comments mark the frame: a done one's box would cover the change it asks you to judge.
+  // Comments marking a spot that is on screen now: a numbered circle there.
+  const marked = pending.filter((n) => n.box && (n.id === focus || n.id === lit || (pop?.kind === 'note' && pop.id === n.id) || (!playing && Math.abs(n.t - t) < 0.2)));
   const shown = comments.filter((n) => n.box && n.status !== 'done' && n.status !== 'approved' && (n.id === focus || n.id === lit || (!playing && Math.abs(n.t - t) < 0.2)));
   const exp = edit.export?.plan === plan.file ? edit.export : null;
   const W = doc?.W || 1080, H = doc?.H || 1920;
   const [zone, nextZone] = useZones(W / H);
-  const trimClip = trimId && cur && clips.find((c) => c.id === trimId);
-  // The trim panel's cut. A base clip a version shows from its join on is cut on the base's clock.
-  const applyTrim = async ({ in: inS, dur }) => {
-    const tg = target(trimClip), raw = cur[tg.key].doc.tracks[tg.ref[0]].clips[tg.ref[1]], skip = r3((raw.in ?? 0) - trimClip.in); // ≤ 0: what the join hides
+  // The part of its source the picked clip plays (the inspector's strip). A base clip a version shows from its join
+  // on is cut on the base's clock.
+  const applySource = ({ in: inS, dur }) => {
+    const tg = target(picked), raw = cur[tg.key].doc.tracks[tg.ref[0]].clips[tg.ref[1]], skip = r3((raw.in ?? 0) - picked.in); // ≤ 0: what the join hides
     if (inS + skip < 0) return setError(`this clip is shared with ${cur.base.file} and starts before the join there; trim its start in ${cur.base.file}`);
-    change(trimClip, null, (d, ref) => { ops.source(d, ref, inS + skip, dur - skip / trimClip.rate); });
-    setTrimId(null);
+    change(picked, null, (d, ref) => { ops.source(d, ref, inS + skip, dur - skip / picked.rate); });
   };
   const sendAdd = () => {
     if (add.trim()) api({ comment: { t: range ? range[0] : live.current.t, ...(range && { to: range[1] }), box: null, text: add.trim(), plan: plan.file } }).catch((er) => setError(er.message));
     setAdd('');
     setRange(null);
+    setPop(null);
   };
   const pickRange = (r, done) => { setRange(r); if (done) toComment(); };
   const outline = mode === 'edit' && picked && !playing && boxes.findLast(([id]) => id === picked.id)?.[1].map((p) => p.map((v) => Math.min(1, Math.max(0, v))).join()).join(' '); // kept inside the frame, so a clip filling it (or larger) still shows its outline
-  // A version without that track mutes its base's.
-  const muteTrack = (track, mute) => {
-    for (const key of ['own', 'base']) {
-      const d = cur[key] && structuredClone(cur[key].doc);
-      if (d && ops.muteTrack(d, track, mute)) return commit(key, d);
+  // Mutes or unmutes a track (or a list of them); a version without that track mutes its base's.
+  const muteTrack = (tracks, mute) => {
+    const docs = {}, changed = new Set();
+    for (const name of [tracks].flat()) for (const key of ['own', 'base']) {
+      const d = cur[key] && (docs[key] ||= structuredClone(cur[key].doc));
+      if (d && ops.muteTrack(d, name, mute)) { changed.add(key); break; }
     }
+    let from = cur;
+    for (const key of changed) { const d = docs[key]; commit(key, d, from); from = { ...from, [key]: { ...from[key], text: `${JSON.stringify(d, null, 1)}\n`, doc: d } }; }
   };
   // A change to each document (a version and its base): fn(doc, key) → whether it changed it.
   const changeEach = (fn) => {
@@ -588,6 +625,8 @@ export default function Editor({ ws, brand, ad, edit }) {
     changeEach((d) => ops.orderTrack(d, name, before));
     setSel(null); // clips are known by their track's place
   };
+  // Groups of tracks (ops.groupTracks): in each document, as a track's order is.
+  const regroup = (fn) => { changeEach(fn); setSel(null); };
   // The edit's own settings: a new size reframes every clip; the rest live in the base when there is one (its
   // versions share them).
   const setEdit = ({ size, ...rest }) => changeEach((d, key) => {
@@ -597,8 +636,10 @@ export default function Editor({ ws, brand, ad, edit }) {
     return true;
   });
   // The brand's saved text styles (inputs/text-styles.json): the inspector's first templates.
-  const [looks, setLooks] = useState([]);
-  useEffect(() => { fetch(fileUrl(ws, brand, 'inputs/text-styles.json'), { cache: 'no-store' }).then((r) => (r.ok ? r.json() : [])).then(setLooks, () => {}); }, [ws, brand]);
+  const [looks, setLooks] = useState({ text: [], clip: [] }); // the brand's saved styles, per kind (lib/server/edit.js saveLooks)
+  useEffect(() => {
+    for (const kind of ['text', 'clip']) fetch(fileUrl(ws, brand, `inputs/${kind}-styles.json`), { cache: 'no-store' }).then((r) => (r.ok ? r.json() : [])).then((l) => setLooks((x) => ({ ...x, [kind]: l })), () => {});
+  }, [ws, brand]);
   // The brand's font files, as paths from the ad's folder, and what the brand uses each for: the font picker lists them first.
   const [brandFonts, setBrandFonts] = useState({}), [fontRoles, setFontRoles] = useState({});
   useEffect(() => {
@@ -610,19 +651,32 @@ export default function Editor({ ws, brand, ad, edit }) {
     fetch(fileUrl(ws, brand, 'inputs/DESIGN.md'), { cache: 'no-store' }).then((r) => (r.ok ? r.text() : ''))
       .then((md) => setColors([...new Set((md.match(/#[0-9a-f]{6}\b/gi) || []).map((x) => x.toLowerCase()))].slice(0, 16)), () => {});
   }, [ws, brand]);
-  const saveLooks = (next) => { setLooks(next); editApi(ws, brand)({ looks: next }).catch((er) => setError(er.message)); };
+  const saveLooks = (kind, next) => { setLooks((x) => ({ ...x, [kind]: next })); editApi(ws, brand)({ looks: next, kind }).catch((er) => setError(er.message)); };
   // A frame tool: a mode (on: whether it is the current one) or an action; n: a count beside its icon.
   const chip = (Icon, label, keys, run, on, n) => <button type="button" className="chip" aria-label={label} title={`${label} (${keys})`} aria-pressed={on} disabled={!cur} onClick={run}><Icon />{n && <span className="ed__count">{n}</span>}</button>;
+  // Export, right of the tools under the frame: its progress while it runs, then the video to open; a failure says why.
+  const exporting = exp?.state === 'running';
+  const exportChips = (
+    <>
+      {chip(exp?.state === 'failed' ? IcAlert : IcDl, exp?.state === 'failed' ? `Export failed: ${exp.error}. Export again` : exporting ? 'Exporting' : `Export ${plan.label}`, exporting ? 'running' : 'an MP4', () => !exporting && api({ export: plan.file }).catch((er) => setError(er.message)), undefined, exporting ? `${Math.round((exp.progress || 0) * 100)}%` : null)}
+      {exp?.state === 'done' && exp.out && chip(IcOpen, 'Open the exported video', exp.out, () => openFile(ws, brand, brandPath(ad, exp.out)).catch((er) => setError(er.message)))}
+    </>
+  );
 
   return (
     <div className="ed" ref={rootRef} style={{ '--ar': W / H }}>
       <div className="ed__main">
+        {error && <p className="ed__error">{error}</p>}
         <div className="ed__stage" ref={stageRef} data-mode={mode} style={{ aspectRatio: `${W} / ${H}` }} onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp} role="img" aria-label="Preview: click or drag to leave a comment">
           <canvas ref={canvasRef} />
           {outline && <svg className="ed__outline" viewBox="0 0 1 1" preserveAspectRatio="none"><polygon points={outline} vectorEffect="non-scaling-stroke" /></svg>}
           {guides?.[0] != null && <i className="ed__guide" style={{ left: pct(guides[0] / W), top: 0, bottom: 0 }} />}
           {guides?.[1] != null && <i className="ed__guide" style={{ top: pct(guides[1] / H), left: 0, right: 0 }} />}
           {zone && <div className="ed__zones"><SafeZones mode={zone} ratio={W / H} /></div>}
+          {marked.map((n) => (
+            <button key={`pin-${n.id}`} type="button" className="ed__pin" data-pop data-status={n.status} style={{ left: pct(n.box[0]), top: pct(n.box[1]) }} title={n.text} aria-label={`Comment ${nums.get(n.id)}: ${n.text}`}
+              onPointerDown={(ev) => ev.stopPropagation()} onClick={(ev) => { const r = ev.currentTarget.getBoundingClientRect(); pick(n, { rect: r, x: r.left, y: r.top + r.height / 2, side: 'right' }); }}>{nums.get(n.id)}</button>
+          ))}
           {mode === 'comment' && shown.map((n) => (
             <div key={n.id} className="ed__box" data-status={n.status} style={boxStyle(n.box)} />
           ))}
@@ -638,6 +692,13 @@ export default function Editor({ ws, brand, ad, edit }) {
           {!doc && !error && <div className="ed__wait">Loading</div>}
           {doc && waiting && <div className="ed__wait">Preparing this clip's preview…</div>}
         </div>
+        {edit.plans.length > 1 && (
+          <div className="chips ed__corner ed__corner--left" role="toolbar" aria-label="Versions">
+            {edit.plans.map((p) => (
+              <button key={p.file} type="button" className="chip" aria-pressed={p.file === plan.file} onClick={() => { pause(); setPlanFile(p.file); }}>{p.label}</button>
+            ))}
+          </div>
+        )}
         <div className="chips ed__tools" role="toolbar" aria-label="Frame tools">
           {chip(IcCursor, 'Select: pick and move clips', 'V', () => setMode('edit'), mode === 'edit')}
           {chip(IcQuote, 'Comment: mark spots to comment on', 'C', () => setMode('comment'), mode === 'comment', pending.length || null)}
@@ -646,58 +707,54 @@ export default function Editor({ ws, brand, ad, edit }) {
           {chip(IcSplit, 'Split at the playhead', 'S', tools.split)}
           {nextZone && <><i /><ZoneButton mode={zone} onClick={nextZone} className="chip" /></>}
         </div>
-      </div>
-      <aside className="ed__side">
-        <div className="ed__head">
-          {edit.plans.length > 1 && (
-            <div className="chips">
-              {edit.plans.map((p) => (
-                <button key={p.file} type="button" className="chip" aria-pressed={p.file === plan.file} onClick={() => { pause(); setPlanFile(p.file); }}>{p.label}</button>
-              ))}
-            </div>
-          )}
-          <div className="spacer" />
-          <Export ws={ws} brand={brand} ad={ad} plan={plan} exp={exp} api={api} onError={setError} />
+        <div className="chips ed__corner ed__corner--right" role="toolbar" aria-label="Export and settings">
+          {exportChips}
+          <button type="button" className="chip" data-pop aria-label="Video settings" title="Video settings: size, background, frame rate, loudness" aria-pressed={pop?.kind === 'video'} disabled={!cur}
+            onClick={(ev) => { const rect = ev.currentTarget.getBoundingClientRect(); setPop(pop?.kind === 'video' ? null : { kind: 'video', rect, x: rect.left + rect.width / 2, side: 'below' }); }}><IcGear /></button>
         </div>
-        {error && <p className="ed__error">{error}</p>}
-        <BrandColors.Provider value={colors}>
-        {mode === 'edit' && (picked
-          ? <Inspector key={`${sel.id}.${sel.li}`} clip={picked} line={line} W={W} H={H} len={lenOf(picked)} fonts={{ ...brandFonts, ...doc.fonts }} fontUrl={url} fontRoles={fontRoles} count={picks.length} looks={looks} onLooks={saveLooks} edit={changePicked} name={line ? line.text : labelOf(picked)}
-            onSource={() => { pause(); setTrimId(picked.id); }} onDuplicate={line ? null : tools.duplicate} onDelete={tools.remove} />
-          : doc && <Settings doc={doc} set={setEdit} />)}
-        </BrandColors.Provider>
-        {mode === 'comment' && <Comments
-          comments={comments} focus={focus} lit={lit} onLit={setLit} onPick={pick} onReview={review} onAction={commentAction} lead={(n) => <span className="ed-comment__time"><b className="ed-comment__num">{nums.get(n.id)}</b>{clock(n.t, true)}{n.to > n.t && `–${clock(n.to, true)}`}</span>}
-          footer={(
-            <div className="ed__add-row">
-              <textarea
-                ref={addRef} className="field ed__add" rows={1} value={add} placeholder={range ? `Add a comment on ${clock(range[0], true)}–${clock(range[1], true)}` : `Add a comment at ${clock(t, true)}`} onChange={(e) => setAdd(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Escape') { e.currentTarget.blur(); setRange(null); }
-                  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendAdd(); }
-                }}
-              />
-              <button type="button" className="btn btn--primary ed__send" aria-label="Send comment" title="Send (Enter)" disabled={!add.trim()} onClick={sendAdd}><IcUp /></button>
-            </div>
-          )}
-        />}
-      </aside>
+      </div>
       {doc && (
-        <div className="ed__tl" ref={tlMount} data-drag={tlDrag ? (tlDrag.snap ? 'snap' : 'drag') : undefined} style={tlDrag ? { height: tlDrag.h } : undefined}>
-        <div className="ed__edge" role="separator" aria-orientation="horizontal" aria-label="Drag or double-click to show or hide the tracks" onPointerDown={edgeDown} onPointerMove={edgeMove} onPointerUp={edgeUp} onPointerCancel={edgeUp} onDoubleClick={edgeToggle} />
-        <Timeline doc={doc} t={t} comments={pending} nums={nums} url={url} lib={lib} lit={lit} range={range} onRange={pickRange} onHover={setLit} onSeek={seek} onPick={pick} off={off} onToggle={toggleTrack} onMute={muteTrack} playing={playing} sel={tlSel} onSelect={select}
+        <div className="ed__tl" ref={tlMount} style={tlH ? { maxHeight: tlH } : undefined}>
+        <div className="ed__grip" role="separator" aria-orientation="horizontal" aria-label="Drag to resize the timeline; double-click to collapse or open it" title="Drag to resize · double-click to collapse or open" onPointerDown={resizeTl} onDoubleClick={toggleTl} />
+        <div className="ed__tl-in">
+        <Timeline doc={doc} t={t} comments={pending} nums={nums} url={url} lib={lib} lit={lit} range={range} picking={mode === 'comment'} onRange={pickRange} onHover={setLit} onSeek={seek} onPick={pick} off={off} onToggle={toggleTrack} onMute={muteTrack} playing={playing} sel={tlSel} onSelect={select} onSelectMany={selectMany} onInspect={(at) => setPop({ kind: 'clip', ...at })}
           onDrag={(c, li) => { const tg = target(c, li), d = copyOf(tg.key), len = lenOf(c); return Object.assign((mode, by, loose, stretch) => ops.limit(d, tg.ref, mode, by, len, loose, stretch), { rate: (mode, by) => ops.stretchRate(d, tg.ref, mode, by) }); }}
-          onRetime={(c, li, mode, by, to, stretch) => change(c, li, (d, ref) => { ops.retime(d, ref, mode, by, lenOf(c), to != null, stretch); return to == null ? undefined : ops.toTrack(d, ref, to); })}
-          onSkim={(x) => draw(x ?? live.current.t)} onOrder={orderTrack} onRename={(name, to) => changeEach((d) => ops.renameTrack(d, name, to))} onRemove={(name) => { changeEach((d) => ops.removeTrack(d, name)); setSel(null); }}
-          onOpen={(id) => { pause(); setTrimId(id); }} simple={simple && !tlDrag}>
+          onRetime={(c, li, mode, by, to, stretch) => {
+            change(c, li, (d, ref) => { ops.retime(d, ref, mode, by, lenOf(c), to != null, stretch); return to == null ? undefined : ops.toTrack(d, ref, to); });
+            // made shorter: the gap it leaves is picked, so Delete (or its button) closes it
+            if (to == null && li == null && ((mode === 'end' && by < 0) || (mode === 'start' && by > 0))) setGap({ track: doc.tracks.find((tr) => tr.clips.some((x) => x.id === c.id))?.name, t: mode === 'end' ? c.end - 1e-3 : c.at + 1e-3 });
+          }}
+          gap={gapRange && { track: gap.track, range: gapRange }} onGap={(track, t) => setGap(track ? { track, t } : null)} onCloseGap={closeGap}
+          onSkim={(x) => draw(x ?? live.current.t)} onOrder={orderTrack} onMoveStretch={moveClipStretch} onGroup={(names) => regroup((d) => ops.groupTracks(d, names))} onUngroup={(names) => regroup((d) => ops.ungroupTracks(d, names))}
+          onOrderGroup={(g, before) => regroup((d) => ops.orderGroup(d, g, before))} onRenameGroup={(g, to) => changeEach((d) => ops.renameGroup(d, g, to))} onRename={(name, to) => changeEach((d) => ops.renameTrack(d, name, to))} onRemove={(name) => { changeEach((d) => ops.removeTrack(d, name)); setSel(null); }}>
           <button type="button" className="ed__play" onClick={() => (playing ? pause() : play())} aria-label={playing ? 'Pause' : 'Play'}>
             {playing ? <IcPause /> : <IcPlay />}
           </button>
           <span className="ed__clock">{clock(t, true)}<span> / {clock(doc.duration, true)}</span></span>
         </Timeline>
         </div>
+        </div>
       )}
-      {trimClip && <Trim key={trimClip.id} clip={trimClip} src={url(trimClip.src)} saved={lib[trimClip.src]} onApply={applyTrim} onClose={() => setTrimId(null)} />}
+      <BrandColors.Provider value={colors}>
+        {pop?.kind === 'clip' && picked && <Pop at={pop} onClose={closePop}><Inspector key={`${sel.id}.${sel.li}`} clip={picked} line={line} W={W} H={H} len={lenOf(picked)} fonts={{ ...brandFonts, ...doc.fonts }} fontUrl={url} fontRoles={fontRoles} all={picks.map((p) => ({ c: p.c, b: p.li != null ? p.c.lines[p.li] : p.c }))} looks={looks} onLooks={saveLooks} edit={changePicked} name={line ? line.text : labelOf(picked)}
+            src={picked.src && url(picked.src)} saved={lib[picked.src]} onSource={applySource} onDuplicate={line ? null : tools.duplicate} onDelete={tools.remove} onClose={closePop} /></Pop>}
+        {pop?.kind === 'note' && pendingOrAny(pop.id) && <Pop at={pop} onClose={closePop}><ul className="ed__one"><Comment n={pendingOrAny(pop.id)} focused lit={false} onPick={() => {}} onReview={review} onAction={commentAction} lead={(n) => <span className="ed-comment__time"><b className="ed-comment__num">{nums.get(n.id)}</b>{clock(n.t, true)}{n.to > n.t && `–${clock(n.to, true)}`}</span>} /></ul></Pop>}
+        {pop?.kind === 'add' && (
+          <Pop at={pop} onClose={closePop}>
+            <div className="ed__add-row">
+              <textarea
+                ref={addRef} autoFocus className="field ed__add" rows={2} value={add} placeholder={range ? `Comment on ${clock(range[0], true)}–${clock(range[1], true)}` : `Comment at ${clock(t, true)}`} onChange={(ev) => setAdd(ev.target.value)}
+                onKeyDown={(ev) => {
+                  if (ev.key === 'Escape') { ev.preventDefault(); setRange(null); setPop(null); }
+                  if (ev.key === 'Enter' && !ev.shiftKey) { ev.preventDefault(); sendAdd(); }
+                }}
+              />
+              <button type="button" className="btn btn--primary ed__send" aria-label="Send comment" title="Send (Enter)" disabled={!add.trim()} onClick={sendAdd}><IcUp /></button>
+            </div>
+          </Pop>
+        )}
+        {pop?.kind === 'video' && doc && <Pop at={pop} onClose={closePop}><Settings doc={doc} set={setEdit} onClose={closePop} /></Pop>}
+      </BrandColors.Provider>
     </div>
   );
 }
@@ -706,19 +763,3 @@ const pct = (x) => `${x * 100}%`;
 const boxStyle = ([x, y, w, h]) => ({ left: pct(x), top: pct(y), width: pct(w), height: pct(h) });
 // The comment field sits under the marked spot, or above it near the bottom.
 const composeStyle = ([x, y, w, h]) => (y + h > 0.75 ? { left: pct(Math.min(x, 0.45)), bottom: pct(1 - y + 0.01) } : { left: pct(Math.min(x, 0.45)), top: pct(y + h + 0.01) });
-
-function Export({ ws, brand, ad, plan, exp, api, onError }) {
-  const running = exp?.state === 'running';
-  const start = () => api({ export: plan.file }).catch((e) => onError(e.message));
-  return (
-    <div className="ed__export">
-      {exp?.state === 'done' && exp.out && (
-        <button type="button" className="btn" onClick={() => openFile(ws, brand, brandPath(ad, exp.out)).catch((e) => onError(e.message))} title={exp.out}>Open video</button>
-      )}
-      {exp?.state === 'failed' && <span className="ed__fail" title={exp.error}>Export failed</span>}
-      <button type="button" className="btn btn--primary" onClick={start} disabled={running}>
-        {running ? `Exporting ${Math.round((exp.progress || 0) * 100)}%` : 'Export'}
-      </button>
-    </div>
-  );
-}

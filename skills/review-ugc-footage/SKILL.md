@@ -23,11 +23,13 @@ Per clip, all clips at once: its library record (`inputs/media/_catalog/json/<id
 `file.original` is the clip's name) for what is said and shown, a sheet of its start, middle and end
 frames (ffmpeg) with the 4:5 crop and the Reels UI zone drawn (zones in **edit-video**, Text), and its
 levels (`ffmpeg -af volumedetect`). Then read the brief (`outputs/<ad>/<ID>_<initials>_V1_….md`): every hook, body line, CTA and
-B-roll needs a clip, except scenes marked “(Optional)” (EDITOR CLIPS are the editor's, and Studio leaves them out). Run every clip through the checklist, the same one Studio shows:
+B-roll needs a clip, except scenes the brief marks optional anywhere in their row ("Optional", "Only if …"; not delivered is fine) (EDITOR CLIPS are the editor's, and Studio leaves them out). Run every clip through the checklist, the same one Studio shows:
 
 1. **line** — says the scripted line, or the same message in the creator's words. Fails on a changed
    meaning, a missing or added claim, a product fact said wrong ("chicken broth" for "bone broth"), a
-   line cut off at the start, or one said twice across clips.
+   line cut off at the start, or one said twice across clips. Transcripts mishear unusual words
+   (a product's rarer words): when only a transcript says a word is wrong, mark it for the user to check
+   by ear, never patch it on that alone.
 2. **action** — does the scripted action, or one that reads the same.
 3. **framing** — face and product inside the 4:5 crop, above the Reels buttons; the label reads the
    right way round (front cameras mirror it) and in focus.
@@ -76,7 +78,9 @@ Fixes the edit can make, so they need no reshoot:
   first word and ends on its last; wordless sound is dropped.
 - **Repeats and filler openers** ("Let me explain" twice, a stray "Okay"): cut.
 - **A missing, clipped or mumbled word:** the creator's cloned voice re-says it (`tools/fix-voice.mjs patch`,
-  **generate-voice**) over B-roll, or over their own face when it's only a word or two.
+  **generate-voice**) over B-roll, or over their own face when it's only a word or two. Never paste the
+  word from another take: it sounds pasted. Without a clone, keep the line as said and fix the claim on
+  screen (a dropped "about" → the exact figure in the small print).
 - **A mirrored label:** flip **every** clip of that camera in place (`ffmpeg -vf hflip` into a temp
   file, then replace the clip), so the creator never jumps sides between cuts.
 

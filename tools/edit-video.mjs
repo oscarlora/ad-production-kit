@@ -8,7 +8,7 @@ import { createReadStream, existsSync, mkdirSync, openSync, readFileSync, readdi
 import { basename, dirname, join, relative, resolve, sep } from 'node:path';
 import { tmpdir } from 'node:os';
 import { brandDirFrom, cachedFile, catalogPaths, die, ffprobeJson, isCached, loudness, machine, markEditing, mimeOf, parseArgs, PREVIEW_PX, readEditing, readRecords, round, run, runAsync, sessionId, typeOf, usage, videoPreviewCmd, videoPreviewOpts, warmPreviews } from './lib/catalog.mjs';
-import { bedOn, compose, cutDoc, eachKeyed, endOf, keyed, mapTimes, r3, reframe, unstack, val } from '../studio/engine/doc.js';
+import { MOVES, compose, cutDoc, endOf, keyed, moveStretch, r3, rearrange, reframe, unstack, val } from '../studio/engine/doc.js';
 import { atempo, soundRate, stretched, tempoOpts } from './lib/stretch.mjs';
 import { sdrSource, tagBt709 } from './lib/hdr.mjs';
 import { fetchMissing } from './lib/r2.mjs';
@@ -33,8 +33,12 @@ const HELP = `edit-video.mjs — an ad's edit document (outputs/<ad>/edit.json)
                                                   clip's cuts and fits every shot to its slot (slowed, or sped
                                                   up to --max-rate and trimmed). --sfx also writes the
                                                   shots' own sound, cut the same way, as one WAV
-  cut      <edit.json> --from s --to s            remove that stretch of time from every track: clips trimmed or
-                                                  split, everything after it (clips, captions, keyframes) moves up
+  cut      <edit.json> --from s --to s            remove that stretch of time from every track: a video or sound
+                                                  spanning it split, other clips trimmed, everything after it
+                                                  (clips, captions, keyframes) moves up. Studio's Close gap runs it
+  move     <edit.json> --from s --to s --at s     move that stretch, every track's layers over it, to the cut at
+                                                  --at (outside it); what lay between closes up, a sound bed stays.
+                                                  Studio: drag a talking clip along its track
   unstack  <edit.json>                            clips that overlap another on their track move to a copy of it just
                                                   above ("Text 2"): a track plays one clip at a time
   recut    <edit.json> --lines a-b,a-b,… --out <edit.json> [--hook "TEXT\\n{ACCENT}"]
@@ -92,7 +96,7 @@ const HELP = `edit-video.mjs — an ad's edit document (outputs/<ad>/edit.json)
                                                   one on an image file and box; one the user's
                                                   own edit made in Studio also has edit: { where, from, to }, and
                                                   deleted: true when it deleted rows, a column or blocks);
-                                                  a comment the user sent back keeps its earlier rounds in history;
+                                                  a comment the user replied to keeps its earlier rounds in history;
                                                   --wait blocks until there is one. They go only to the session
                                                   editing the ad (lib/catalog.mjs markEditing); any command that changes
                                                   an ad another session holds stops: --take takes it, on the user's yes.
@@ -105,15 +109,18 @@ Document (times are seconds on the timeline clock; any number marked * also take
   { size: [1080, 1920], fps: 30, background, loudness: -14 (LUFS; null = untouched), fonts: { family: file },
     fx: "fx.js" (the ad's own layers / transitions / animations, see studio/engine/draw.js), output,
     sounds: { name: path | { src, volume (dB), dur } } (what beats play),
-    tracks: [ { name, hidden, mute, volume* (dB), opacity*, grade,
+    tracks: [ { name, group (a folder of tracks, kept together in Studio), hidden, mute, volume* (dB), opacity*, grade,
                 transform: { scale*, x*, y*, rotate*, origin: [x, y] }, clips: [...] } ] }
   The first track draws on top. A track plays one clip at a time: clips that overlap in time go on separate
   tracks (unstack splits them). Paths are relative to the document.
   A version that only changes the hook: { base: "edit.json", from: "Body1", tracks: [its hook's clips] } plays them,
   then the base from its first clip named "from" (compose in studio/engine/doc.js). Commands that change a document
   refuse it: body changes go in the base, hook changes in the version's own clips.
-  Every clip: type (else from src), at, end (or dur; media default to the source's end), name.
+  Every clip: type (else from src), at, end (or dur; media default to the source's end), name,
+    flip (true: mirrored left to right, e.g. so a speaker points at what's beside them; Studio: Media → Flip).
     video  src, in (source s), rate, mute, volume* (dB), fit (cover | contain | fill), grade,
+           matte (remove-background's matte of src: only the person draws, over the tracks below),
+           feather (px, or { top, bottom, left, right }: soft edges that fade it into the tracks below),
            transition: { type, dur (0.4), dir, ease, color } into it from the clip before it on its track,
            centered on the cut: cut | fade | dip | slide | push | wipe (dir left|right|up|down) | zoom | blur | flip
     audio  src, in, rate, volume* (dB), fadeIn, fadeOut, loop
@@ -128,7 +135,9 @@ Document (times are seconds on the timeline clock; any number marked * also take
     custom draw (a layer in fx), any params; beats: { name: [t (s into the clip), sound, dB?] } play doc.sounds[sound]
            from its onset at that moment, and the layer reads the same times (env.mg.beat)
   Visual clips: x*, y* (center), w*, h* (box; media default the frame), scale*, rotate*, opacity*, blur*,
-    origin: [x, y] (scale/rotate pivot), radius*, enter / exit: type or { type, dur }:
+    origin: [x, y] (scale/rotate pivot), radius*, enter / exit: type or { type, dur }; video, image and rect also
+    border { color, width (px, just outside the box), opacity } and shadow { color, opacity, blur, x, y } (a frame or
+    drop shadow, no extra rect; Studio saves looks of these in the brand's inputs/clip-styles.json);
     fade | pop | bounce | zoom | blur | slide-up | slide-down | slide-left | slide-right
   style: font (Google Fonts family or doc.fonts), size, weight, italic, color, accent, stroke, strokeWidth,
     shadow { color, blur, x, y, opacity }, background { color, padX, padY, radius, opacity }, maxWidth,
@@ -176,7 +185,6 @@ function blackGaps(doc) {
 
 // Sound effects (clips under 3 s on a sound-only track) with no move (a picture keyframe), cut, or text, box or
 // image coming in from 0.15 s before to 0.6 s after them: left behind when what they marked moved or went.
-const MOVES = ['x', 'y', 'w', 'h', 'scale', 'rotate', 'opacity', 'blur'];
 function orphanSfx(doc) {
   const marks = [];
   for (const tr of doc.tracks || []) {
@@ -267,7 +275,7 @@ function check(p) {
     const clips = [...(tr.clips || [])].sort((a, b) => (a.at ?? 0) - (b.at ?? 0));
     lines.push(`${tr.name}${tr.mute ? ' (muted)' : ''}${tr.hidden ? ' (hidden)' : ''}: ${clips.length} clip(s)`);
     clips.forEach((c) => {
-      if (c.src && !existsSync(resolve(dir, c.src))) problems.push(`${tr.name}: missing ${c.src}`);
+      for (const f of [c.src, c.matte]) if (f && !existsSync(resolve(dir, f))) problems.push(`${tr.name}: missing ${f}`);
       for (const [name, [, snd]] of Object.entries(c.beats || {})) if (snd && !doc.sounds?.[snd]) problems.push(`${tr.name}: beat "${name}" plays "${snd}", not in sounds`);
       const stop = endOf(c);
       if (stop != null) end = Math.max(end, stop);
@@ -294,7 +302,7 @@ function check(p) {
 // at its rate. → [{ label, ready(), make() }]
 function previewJobs(target) {
   const clips = target.endsWith('.json')
-    ? (readDoc(target).tracks || []).flatMap((tr) => (tr.clips || []).filter((c) => c.src).map((c) => ({ abs: resolve(dirname(target), c.src), rate: c.rate ?? 1 })))
+    ? (readDoc(target).tracks || []).flatMap((tr) => (tr.clips || []).flatMap((c) => [[c.src, c.rate ?? 1], [c.matte, 1]].filter(([f]) => f).map(([f, rate]) => ({ abs: resolve(dirname(target), f), rate }))))
     : (statSync(target).isDirectory() ? readdirSync(target).filter((f) => !f.startsWith('.')).map((f) => join(target, f)) : [target]).map((abs) => ({ abs, rate: 1 }));
   const jobs = new Map();
   for (const { abs, rate } of clips) {
@@ -493,109 +501,41 @@ function cutCmd(p) {
   console.log(`cut ${round(a)}–${round(b)}s (${round(b - a)}s) from every track`);
 }
 
-// ---------- recut ----------
-// Keyframes v over [a, b) alone, as the engine plays them there: a key on the value at a, one held on the value just
-// before b, and a key every frame through an eased move the stretch holds only part of (cut short, it won't rescale).
-// A jump (a hold key, then the next) within a frame of either edge stays outside, like the shot cut it marks.
-function keysWithin(v, a, b, fps) {
-  const jump = (x, y) => v.find(([t], i) => t > x && t < y && v[i - 1]?.[2] === 'hold')?.[0];
-  a = jump(a, a + 1 / fps) ?? a; b = jump(b - 1 / fps, b) ?? b;
-  const z = r3(b - 0.001), at = [a, ...v.map(([t]) => t).filter((t) => t > a && t < z), z], out = [];
-  for (let j = 0; j < at.length - 1; j++) {
-    const s = at[j], e = at[j + 1], i = v.findLastIndex(([t]) => t <= s), ez = v[i]?.[2];
-    if (i < 0 || i === v.length - 1 || ['linear', 'hold'].includes(ez) || (v[i][0] === s && v[i + 1][0] === e)) out.push([s, val(v, s), ez]);
-    else for (let t = s; t < e - 1e-6; t += 1 / fps) out.push([r3(t), val(v, t), 'linear']);
-  }
-  out.push([z, val(v, z), 'hold']);
-  return out.map(([t, x, ez]) => [t, typeof x === 'number' ? r3(x) : x, ...(ez ? [ez] : [])]);
+// ---------- move ----------
+function moveCmd(p) {
+  const [a, b, t] = ['from', 'to', 'at'].map((k) => Number(args[k]));
+  if (!(b > a) || !Number.isFinite(t) || (t > a && t < b)) die('--from s --to s --at s (a cut outside the stretch) are required');
+  const doc = readDoc(p, true);
+  fillEnds(doc, dirname(p));
+  saveDoc(p, moveStretch(doc, a, b, t));
+  console.log(`moved ${round(a)}–${round(b)}s to ${round(t)}s`);
 }
 
-// A new edit from stretches of a finished one, in any order: each keeps its clips, in-points, captions, overlays and
-// every keyframe (a sentence's zoom on a track transform) as the source showed them (keysWithin, cutDoc on a copy); a
-// sound bed runs once under the whole new edit.
+// ---------- recut ----------
+// A new edit from stretches of a finished one, in any order (rearrange in studio/engine/doc.js).
 function recutCmd(p) {
   const spans = String(args.lines || '').split(',').map((s) => s.split('-').map(Number));
   if (!args.out || spans.some(([a, b]) => !(b > a))) die('--lines a-b,a-b,… (seconds on the source timeline) and --out <edit.json> are required');
-  const src = readDoc(p), out = resolve(args.out), clipsOf = (d) => d.tracks.flatMap((tr) => tr.clips || []), fps = src.fps || 30;
+  const src = readDoc(p), out = resolve(args.out), clipsOf = (d) => d.tracks.flatMap((tr) => tr.clips || []);
   fillEnds(src, dirname(p));
-  const total = Math.max(...clipsOf(src).map((c) => endOf(c) ?? 0));
-  const doc = { ...structuredClone(src), tracks: src.tracks.map((tr) => ({ ...structuredClone(tr), clips: [] })) };
-  delete doc.output; delete doc.duration;
-  let pos = 0;
-  const trackKeys = src.tracks.map(() => new Map()); // per track: keyed path → its keys, stretch after stretch
-  spans.forEach(([a, b], i) => {
-    const part = structuredClone(src);
-    for (const tr of part.tracks) {
-      tr.clips = (tr.clips || []).filter((c) => !bedOn(tr, c));
-      for (const o of [tr, ...tr.clips]) eachKeyed(o, (h, k, v) => { h[k] = keysWithin(v, a, b, fps); });
-    }
-    for (const c of clipsOf(part)) {
-      if ((c.at ?? 0) < a && (endOf(c) ?? Infinity) > a) delete c.transition; // it led in from a clip that's gone
-      // A caption line the stretch cuts into keeps only its words inside it (a new first word capitalized).
-      if (c.lines) c.lines = c.lines.flatMap((l) => {
-        if (!l.words || (l.at >= a && l.end <= b) || l.end <= a || l.at >= b) return [l];
-        const words = l.words.filter(([, s, e]) => e > a + 0.05 && s < b - 0.05).map(([w, s, e, ...x]) => [w, Math.max(s, a), Math.min(e, b), ...x]);
-        if (!words.length) return [];
-        if (l.at < a) words[0][0] = words[0][0][0].toUpperCase() + words[0][0].slice(1);
-        return [{ ...l, text: words.map(([w]) => w).join(' '), at: words[0][1], end: Math.min(l.end, b), words }];
-      });
-    }
-    if (b < total) cutDoc(part, b, total);
-    if (a > 0) cutDoc(part, 0, a);
-    // Scraps the cut left at its edges (the tail of a B-roll shot, a sound effect's last frames) go; the clip
-    // next to one on its track stretches over its time.
-    const near = (x, y) => Math.abs(x - y) < 1e-3;
-    for (const tr of part.tracks) tr.clips = tr.clips.filter((c) => {
-      const at = c.at ?? 0, end = endOf(c) ?? b - a;
-      if (c.lines || end - at >= 0.25 || (at > 1e-3 && end < b - a - 1e-3)) return true;
-      const after = tr.clips.find((x) => x !== c && near(x.at ?? 0, end)), before = tr.clips.find((x) => x !== c && near(endOf(x) ?? -1, at));
-      if (near(at, 0) && after) { if (after.src) after.in = r3((after.in ?? 0) - (end - at) * (after.rate ?? 1)); after.at = at; }
-      else if (before) before.end = end;
-      return false;
-    });
-    // A shot the cut left starting a hair after the stretch starts (rounding) starts with it, so no frame flashes under it.
-    for (const c of clipsOf(part)) if (c.at > 0 && c.at < 0.05 && !c.lines && (c.in ?? 0) >= c.at * (c.rate ?? 1)) { if (c.src) c.in = r3((c.in ?? 0) - c.at * (c.rate ?? 1)); c.at = 0; }
-    if (i === 0 && args.hook) for (const c of clipsOf(part)) if (c.lines) c.lines = []; // the hook text replaces them
-    mapTimes(part, (t) => r3(t + pos));
-    part.tracks.forEach((tr, k) => {
-      eachKeyed({ ...tr, clips: [] }, (h, key, v, path) => {
-        const id = JSON.stringify([...path, key]); trackKeys[k].set(id, [...(trackKeys[k].get(id) || []), ...v]);
-      });
-      doc.tracks[k].clips.push(...tr.clips);
-    });
-    pos = r3(pos + b - a);
-  });
-  src.tracks.forEach((tr, k) => {
-    const t = doc.tracks[k], caps = t.clips.filter((c) => c.lines);
-    for (const [id, v] of trackKeys[k]) { const path = JSON.parse(id), key = path.pop(); let o = t; for (const x of path) o = o[x]; o[key] = v; }
-    if (caps.length > 1) {
-      const one = { ...caps[0], at: 0, end: pos, lines: caps.flatMap((c) => c.lines) };
-      // A move (captions lifted off a label) carries over from every stretch, each opening on its own value.
-      for (const k of MOVES) if (caps.some((c) => keyed(c[k]))) one[k] = caps.flatMap((c) => (keyed(c[k]) ? c[k] : c[k] != null ? [[c.at ?? 0, c[k], 'hold']] : []));
-      t.clips = [...t.clips.filter((c) => !c.lines), one];
-    }
-    for (const c of (tr.clips || []).filter((c) => bedOn(tr, c))) t.clips.push({ ...structuredClone(c), end: pos });
-    // A shot stretched back over a scrap past its source's first frame starts on that frame; the shot before holds on.
-    for (const c of t.clips) if (c.src && c.in < 0) {
-      const before = t.clips.find((x) => x !== c && Math.abs((endOf(x) ?? -1) - c.at) < 1e-3);
-      c.at = r3(c.at - c.in / (c.rate ?? 1)); c.in = 0;
-      if (before) before.end = c.at;
-    }
-  });
+  const doc = rearrange(src, spans), first = r3(spans[0][1] - spans[0][0]);
   if (args.hook) {
-    const text = clipsOf(src).filter((c) => c.type === 'text'), like = text.find((c) => !(c.at > 0)) || text[0];
+    for (const c of clipsOf(doc)) if (c.lines) c.lines = c.lines.filter((l) => l.at >= first - 1e-3); // the hook text replaces them
+    // The hook text at the start, not a boxed badge over it.
+    const text = clipsOf(src).filter((c) => c.type === 'text'), firsts = text.filter((c) => !(c.at > 0));
+    const like = firsts.find((c) => !c.style?.background) || firsts[0] || text[0];
     if (!like) die('--hook: the source has no text clip to take the style from');
     const tr = doc.tracks[src.tracks.findIndex((t) => t.clips?.includes(like))];
-    tr.clips = [{ ...structuredClone(like), name: 'Hook text', text: args.hook.replace(/\\n/g, '\n'), at: 0, end: r3(spans[0][1] - spans[0][0]) }, ...tr.clips.filter((c) => c.name !== like.name || c.at > 0)];
+    tr.clips = [{ ...structuredClone(like), name: 'Hook text', text: args.hook.replace(/\\n/g, '\n'), at: 0, end: first }, ...tr.clips.filter((c) => c.name !== like.name || c.at > 0)];
   }
   // Paths are relative to the document: rebase them onto the new one's folder.
   const rebase = (f) => relative(dirname(out), resolve(dirname(p), f));
-  for (const c of clipsOf(doc)) if (c.src) c.src = rebase(c.src); else delete c.in; // cutDoc's head trim sets in on any clip
+  for (const c of clipsOf(doc)) if (c.src) { c.src = rebase(c.src); if (c.matte) c.matte = rebase(c.matte); } else delete c.in; // cutDoc's head trim sets in on any clip
   if (doc.fx) doc.fx = rebase(doc.fx);
   for (const k of Object.keys(doc.fonts || {})) doc.fonts[k] = rebase(doc.fonts[k]);
   mkdirSync(dirname(out), { recursive: true });
   saveDoc(out, doc);
-  console.log(`recut: ${spans.length} stretches, ${pos}s → ${out}`);
+  console.log(`recut: ${spans.length} stretches, ${r3(spans.reduce((n, [a, b]) => n + b - a, 0))}s → ${out}`);
 }
 
 // ---------- reframe ----------
@@ -907,7 +847,7 @@ function duckCmd(p) {
 // ---------- review comments ----------
 // One file per comment in <ad>/comments/ (written by Studio, or lib/share.mjs from a review link): { id, t, to? (a stretch
 // from t to to), box?: [x, y, w, h] (fractions), text, plan, status, reply?, history?: [{ text, reply }] (earlier rounds of
-// a comment the user sent back) }; one on an image has file (final/<name>) instead of t and plan; a review link's has
+// a comment the user replied to) }; one on an image has file (final/<name>) instead of t and plan; a review link's has
 // by (who wrote it) and share (its token).
 
 // What shows at time t (or over t–to) in a document: per track, the clips live then (index, what it is, its span).
@@ -1115,7 +1055,7 @@ function stabilizeCmd(p) {
 }
 
 const p = target && resolve(target);
-const cmds = { check, previews: previewsCmd, place: placeCmd, track: trackCmd, stabilize: stabilizeCmd, cut: cutCmd, unstack: unstackCmd, recut: recutCmd, tighten: tightenCmd, reframe: reframeCmd, export: exportCmd, audio: audioCmd, frames: framesCmd, captions: captionsCmd, match: matchCmd, moves: movesCmd, duck: duckCmd, comments: commentsCmd };
+const cmds = { check, previews: previewsCmd, place: placeCmd, track: trackCmd, stabilize: stabilizeCmd, cut: cutCmd, move: moveCmd, unstack: unstackCmd, recut: recutCmd, tighten: tightenCmd, reframe: reframeCmd, export: exportCmd, audio: audioCmd, frames: framesCmd, captions: captionsCmd, match: matchCmd, moves: movesCmd, duck: duckCmd, comments: commentsCmd };
 if (!cmds[cmd]) usage(HELP);
 // Library originals left in the cloud (a light pull) download before anything reads them.
 if (cmd !== 'comments' && cmd !== 'previews' && existsSync(p || '')) await fetchMissing((readDoc(p).tracks || []).flatMap((tr) => (tr.clips || []).map((c) => c.src && resolve(dirname(p), c.src))));

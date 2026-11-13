@@ -1,6 +1,7 @@
 // Color grade on the GPU: one WebGL2 pass per graded clip frame. Neutral values change nothing.
 // exposure (stops, 0) · contrast (1) · saturation (1) · temperature, tint (-1..1, 0) · gamma (1)
 // match ([gL, ga, gb, oL, oa, ob]: Lab = Lab × g + o, written by `edit-video.mjs match`) · vignette, grain (0..1, 0)
+// A matte frame (remove-background: white = keep) becomes the alpha, so only the person draws.
 import { val } from './doc.js';
 
 const KEYS = { exposure: 0, contrast: 1, saturation: 1, temperature: 0, tint: 0, gamma: 1, vignette: 0, grain: 0 };
@@ -12,7 +13,8 @@ void main() { uv = vec2(p.x * 0.5 + 0.5, 0.5 - p.y * 0.5); gl_Position = vec4(p,
 const FS = `#version 300 es
 precision highp float;
 in vec2 uv; out vec4 o;
-uniform sampler2D img;
+uniform sampler2D img, mat;
+uniform bool matted;
 uniform float exposure, contrast, saturation, temperature, tint, gamma, vignette, grain, seed;
 uniform vec3 mg, mo;
 uniform bool matched;
@@ -45,8 +47,10 @@ void main() {
   c = pow(max(c, 0.0), vec3(1.0 / gamma));
   c *= 1.0 - vignette * smoothstep(0.35, 0.95, length(uv - 0.5) * 1.414);
   c += (rnd(uv * 1000.0) - 0.5) * grain * 0.18;
-  o = vec4(clamp(c, 0.0, 1.0), s.a);
+  o = vec4(clamp(c, 0.0, 1.0), matted ? smoothstep(0.2, 0.9, texture(mat, uv).r) : s.a); // tightened: no halo of the old background
 }`;
+
+export const NEUTRAL = { ...KEYS, match: null };
 
 // Track grade and clip grade combined at time t; null when neutral.
 export function gradeAt(t, ...grades) {
@@ -88,17 +92,27 @@ export class Grader {
     const loc = gl.getAttribLocation(prog, 'p');
     gl.enableVertexAttribArray(loc);
     gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
-    gl.bindTexture(gl.TEXTURE_2D, gl.createTexture());
-    for (const [k, v] of [[gl.TEXTURE_MIN_FILTER, gl.LINEAR], [gl.TEXTURE_MAG_FILTER, gl.LINEAR], [gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE], [gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE]]) gl.texParameteri(gl.TEXTURE_2D, k, v);
+    for (const unit of [1, 0]) { // 1: the matte, 0: the image
+      gl.activeTexture(gl.TEXTURE0 + unit);
+      gl.bindTexture(gl.TEXTURE_2D, gl.createTexture());
+      for (const [k, v] of [[gl.TEXTURE_MIN_FILTER, gl.LINEAR], [gl.TEXTURE_MAG_FILTER, gl.LINEAR], [gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE], [gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE]]) gl.texParameteri(gl.TEXTURE_2D, k, v);
+    }
+    gl.uniform1i(gl.getUniformLocation(prog, 'mat'), 1);
     this.gl = gl;
-    this.u = Object.fromEntries([...Object.keys(KEYS), 'mg', 'mo', 'matched', 'seed'].map((k) => [k, gl.getUniformLocation(prog, k)]));
+    this.u = Object.fromEntries([...Object.keys(KEYS), 'mg', 'mo', 'matched', 'matted', 'seed'].map((k) => [k, gl.getUniformLocation(prog, k)]));
   }
 
-  // source: a VideoFrame, ImageBitmap or canvas. Returns this.canvas holding the graded image.
-  apply(source, w, h, g, seed = 0) {
+  // source (and matte): a VideoFrame, ImageBitmap or canvas. Returns this.canvas holding the graded image.
+  apply(source, w, h, g, seed = 0, matte = null) {
     const { gl, u } = this;
     if (this.canvas.width !== w || this.canvas.height !== h) { this.canvas.width = w; this.canvas.height = h; }
     gl.viewport(0, 0, w, h);
+    if (matte) {
+      gl.activeTexture(gl.TEXTURE1);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, matte);
+      gl.activeTexture(gl.TEXTURE0);
+    }
+    gl.uniform1i(u.matted, matte ? 1 : 0);
     gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, source);
     for (const k of Object.keys(KEYS)) gl.uniform1f(u[k], g[k]);
     const m = g.match || [1, 1, 1, 0, 0, 0];

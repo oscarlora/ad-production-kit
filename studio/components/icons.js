@@ -51,7 +51,9 @@ export const IcHash = () => <svg {...base}><path d="M5 9h15M4 15h15M10 3L8 21M16
 export const IcGlobe = () => <svg {...base}><circle cx="12" cy="12" r="9" /><path d="M3 12h18M12 3a14 14 0 010 18M12 3a14 14 0 000 18" /></svg>;
 export const IcUser = () => <svg {...base}><circle cx="12" cy="8" r="4" /><path d="M4 21a8 8 0 0116 0" /></svg>;
 export const IcGrip = () => <svg {...base}><path d="M9 6h.01M9 12h.01M9 18h.01M15 6h.01M15 12h.01M15 18h.01" strokeWidth="3" /></svg>;
+export const IcUngroup = () => <svg {...base}><rect x="3" y="3" width="8" height="8" rx="1.5" /><rect x="13" y="13" width="8" height="8" rx="1.5" /><path d="M15 3h4a2 2 0 012 2v4M9 21H5a2 2 0 01-2-2v-4" strokeDasharray="2 2" /></svg>;
 export const IcTrash = () => <svg {...base}><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3" /></svg>;
 export const IcType = () => <svg {...base}><path d="M5 7V5h14v2M12 5v14M9 19h6" /></svg>;
 export const IcCursor = () => <svg {...base}><path d="M5 3l14 7-6 2-2 6z" /></svg>;
 export const IcSplit = () => <svg {...base}><path d="M12 3v18M8 8H4v8h4M16 8h4v8h-4" /></svg>;
+export const IcGear = () => <svg {...base}><path d="M12.22 2h-.44a2 2 0 00-2 2v.18a2 2 0 01-1 1.73l-.43.25a2 2 0 01-2 0l-.15-.08a2 2 0 00-2.73.73l-.22.38a2 2 0 00.73 2.73l.15.1a2 2 0 011 1.72v.51a2 2 0 01-1 1.74l-.15.09a2 2 0 00-.73 2.73l.22.38a2 2 0 002.73.73l.15-.08a2 2 0 012 0l.43.25a2 2 0 011 1.73V20a2 2 0 002 2h.44a2 2 0 002-2v-.18a2 2 0 011-1.73l.43-.25a2 2 0 012 0l.15.08a2 2 0 002.73-.73l.22-.39a2 2 0 00-.73-2.73l-.15-.08a2 2 0 01-1-1.74v-.5a2 2 0 011-1.74l.15-.09a2 2 0 00.73-2.73l-.22-.38a2 2 0 00-2.73-.73l-.15.08a2 2 0 01-2 0l-.43-.25a2 2 0 01-1-1.73V4a2 2 0 00-2-2z" /><circle cx="12" cy="12" r="3" /></svg>;

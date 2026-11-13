@@ -81,22 +81,21 @@ flag what's off to the user.
 
 ## 6. Clips
 
-MiniMax H3 (**write-video-prompt**, Video models), 3–6 minutes a clip. Group whole shots into chunks of
-up to 15 s (never split a shot), pass their frames in order, and run every chunk at once (long renders:
-AGENTS.md):
+**write-video-prompt**, Video model. Group whole shots into chunks no longer than it takes (never split
+a shot), pass their frames in order, and run every chunk at once (long renders: AGENTS.md):
 
-    node tools/generate-video.mjs --model minimax-h3 --prompt-file <ad>/prompts/chunk-01.txt \
+    node tools/generate-video.mjs --prompt-file <ad>/prompts/chunk-01.txt \
       --image <ad>/frames/frame-01.png --image <ad>/frames/frame-02.png --image <ad>/frames/frame-03.png \
       --aspect 16:9 --duration <chunk seconds, rounded up> --out <ad>/clips/chunk-01.mp4 --timeout 1500
 
-The prompt, in MiniMax's layout (**write-video-prompt**), says:
+The prompt, in Seedance's layout (**write-video-prompt**), says:
 
 - Images 1…N are the slides, reproduced exactly, each filling the 16:9 frame edge to edge (no bars),
   shown in order with hard cuts at the given seconds; the last runs to the end.
 - Static camera; the only words on screen are the slides' own, exactly as printed.
-- Sound: when the sound effects go on in the edit (**generate-sfx**), both sound fields `N/A`. When
-  the clip carries them: each beat's **What we hear** sound at its time, next to its motion, and
-  music `N/A`.
+- Sound: when the sound effects go on in the edit (**generate-sfx**), none (`--no-audio`). When the
+  clip carries them: each beat's **What we hear** sound at its time, next to its motion, under the
+  audio policy (no music).
 - Lively: something always moving (blinks, breathing, bobbing icons).
 - Per slide, a timeline in chunk seconds of its **What moves** beats, each at its word's time. Seconds
   only; quoted narration gets written onto the slide.

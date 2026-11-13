@@ -16,7 +16,7 @@ export const POST = brandPost(async (req, ctx) => {
     if (body.approve) { approveComment(dir, body.approve); return jsonRes({ ok: true }); }
     if (body.sendBack) { sendBackComment(dir, body.sendBack.id, body.sendBack.text); return jsonRes({ ok: true }); }
     if (body.remove) { removeComment(dir, body.remove); return jsonRes({ ok: true }); }
-    if (body.inputs && body.looks) return jsonRes(saveLooks(dir, body.looks));
+    if (body.inputs && body.looks) return jsonRes(saveLooks(dir, body.looks, body.kind));
     if (body.inputs) return jsonRes({ error: 'a page takes only md, comment and looks actions' }, 400);
     if (body.decide) return jsonRes({ comment: decideScene(dir, body.decide) });
     if (body.voice) { pickVoice(dir, body.voice); return jsonRes({ ok: true }); }

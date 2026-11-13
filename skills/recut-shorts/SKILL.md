@@ -53,7 +53,7 @@ tell my friends").
 - **Hook framing:** each cut gets its own hook text (`--hook`), written for its new first line in the
   source hook's style (a short tease, same length and accent), since the source's was written for
   another line and reads off over this one; none when the stretch already has text (a list building)
-  it would repeat. Keep the source's hook visuals: `recut` carries only what's in the stretches, so
+  it would repeat or a card beside the speaker: two blocks of text in a hook is too much. Keep the source's hook visuals: `recut` carries only what's in the stretches, so
   add them to the first stretch yourself and re-place them for its shot.
 - **Dropped first word:** when a line drops its first word ("But", "Then"), make sure the next word
   survives whole; when the two run together, keep both.

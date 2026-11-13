@@ -196,7 +196,7 @@ export function cutDoc(doc, a, b) {
       if (end <= a || at >= b) { if (at >= b) { c.at = r3(at - d); if (c.end != null) c.end = r3(end - d); } out.push(c); continue; }
       if (at >= a && end <= b) continue; // wholly inside: gone
       if (at < a && end > b && bedOn(tr, c)) { c.end = r3(end - d); out.push(c); continue; } // a music bed plays on unbroken
-      if (at < a && end > b && c.src && !c.lines) { // spans the cut: split, the second part skips the cut's source
+      if (at < a && end > b && ['video', 'audio'].includes(clipType(c)) && !c.loop) { // a video or sound spanning the cut: split, the second part skips the cut's source
         out.push({ ...c, end: a });
         out.push({ ...c, at: a, in: r3((c.in ?? 0) + (b - at) * rate), ...(c.end != null && { end: r3(end - d) }), transition: undefined });
         continue;
@@ -254,4 +254,105 @@ export function reframe(doc, [nw, nh]) {
     }
   }
   doc.size = [nw, nh];
+}
+
+// Keyframes v over [a, b) alone, as the engine plays them there: a key on the value at a, one held on the value just
+// before b, and a key every frame through an eased move the stretch holds only part of (cut short, it won't rescale).
+// A jump (a hold key, then the next) within a frame of either edge stays outside, like the shot cut it marks.
+function keysWithin(v, a, b, fps) {
+  const jump = (x, y) => v.find(([t], i) => t > x && t < y && v[i - 1]?.[2] === 'hold')?.[0];
+  a = jump(a, a + 1 / fps) ?? a; b = jump(b - 1 / fps, b) ?? b;
+  const z = r3(b - 0.001), at = [a, ...v.map(([t]) => t).filter((t) => t > a && t < z), z], out = [];
+  for (let j = 0; j < at.length - 1; j++) {
+    const s = at[j], e = at[j + 1], i = v.findLastIndex(([t]) => t <= s), ez = v[i]?.[2];
+    if (i < 0 || i === v.length - 1 || ['linear', 'hold'].includes(ez) || (v[i][0] === s && v[i + 1][0] === e)) out.push([s, val(v, s), ez]);
+    else for (let t = s; t < e - 1e-6; t += 1 / fps) out.push([r3(t), val(v, t), 'linear']);
+  }
+  out.push([z, val(v, z), 'hold']);
+  return out.map(([t, x, ez]) => [t, typeof x === 'number' ? r3(x) : x, ...(ez ? [ez] : [])]);
+}
+
+// The moves a picture clip (or a track's transform) can make: what recut carries over and the SFX check reads.
+export const MOVES = ['x', 'y', 'w', 'h', 'scale', 'rotate', 'opacity', 'blur'];
+
+// A new edit from stretches [a, b] of a document (every clip's end written in), in any order: each keeps its clips,
+// in-points, captions, overlays and every keyframe (a sentence's zoom on a track transform) as the source showed them
+// (keysWithin, cutDoc on a copy); a sound bed runs once under the whole new edit. edit-video's recut, and Studio's
+// moves of a stretch.
+export function rearrange(src, spans) {
+  const clipsOf = (d) => d.tracks.flatMap((tr) => tr.clips || []), fps = src.fps || 30;
+  const total = Math.max(...clipsOf(src).map((c) => endOf(c) ?? 0));
+  const doc = { ...structuredClone(src), tracks: src.tracks.map((tr) => ({ ...structuredClone(tr), clips: [] })) };
+  delete doc.output; delete doc.duration;
+  let pos = 0;
+  const trackKeys = src.tracks.map(() => new Map()); // per track: keyed path → its keys, stretch after stretch
+  spans.forEach(([a, b]) => {
+    const part = structuredClone(src);
+    for (const tr of part.tracks) {
+      tr.clips = (tr.clips || []).filter((c) => !bedOn(tr, c));
+      for (const o of [tr, ...tr.clips]) eachKeyed(o, (h, k, v) => { h[k] = keysWithin(v, a, b, fps); });
+    }
+    for (const c of clipsOf(part)) {
+      if ((c.at ?? 0) < a && (endOf(c) ?? Infinity) > a) delete c.transition; // it led in from a clip that's gone
+      // A caption line the stretch cuts into keeps only its words inside it (a new first word capitalized).
+      if (c.lines) c.lines = c.lines.flatMap((l) => {
+        if (!l.words || (l.at >= a && l.end <= b) || l.end <= a || l.at >= b) return [l];
+        const words = l.words.filter(([, s, e]) => e > a + 0.05 && s < b - 0.05).map(([w, s, e, ...x]) => [w, Math.max(s, a), Math.min(e, b), ...x]);
+        if (!words.length) return [];
+        if (l.at < a) words[0][0] = words[0][0][0].toUpperCase() + words[0][0].slice(1);
+        return [{ ...l, text: words.map(([w]) => w).join(' '), at: words[0][1], end: Math.min(l.end, b), words }];
+      });
+    }
+    if (b < total) cutDoc(part, b, total);
+    if (a > 0) cutDoc(part, 0, a);
+    // Scraps the cut left at its edges (the tail of a B-roll shot, a sound effect's last frames) go; the clip
+    // next to one on its track stretches over its time.
+    const near = (x, y) => Math.abs(x - y) < 1e-3;
+    for (const tr of part.tracks) tr.clips = tr.clips.filter((c) => {
+      const at = c.at ?? 0, end = endOf(c) ?? b - a;
+      if (c.lines || end - at >= 0.25 || (at > 1e-3 && end < b - a - 1e-3)) return true;
+      const after = tr.clips.find((x) => x !== c && near(x.at ?? 0, end)), before = tr.clips.find((x) => x !== c && near(endOf(x) ?? -1, at));
+      if (near(at, 0) && after) { if (after.src) after.in = r3((after.in ?? 0) - (end - at) * (after.rate ?? 1)); after.at = at; }
+      else if (before) before.end = end;
+      return false;
+    });
+    // A shot the cut left starting a hair after the stretch starts (rounding) starts with it, so no frame flashes under it.
+    for (const c of clipsOf(part)) if (c.at > 0 && c.at < 0.05 && !c.lines && (c.in ?? 0) >= c.at * (c.rate ?? 1)) { if (c.src) c.in = r3((c.in ?? 0) - c.at * (c.rate ?? 1)); c.at = 0; }
+    mapTimes(part, (t) => r3(t + pos));
+    part.tracks.forEach((tr, k) => {
+      eachKeyed({ ...tr, clips: [] }, (h, key, v, path) => {
+        const id = JSON.stringify([...path, key]); trackKeys[k].set(id, [...(trackKeys[k].get(id) || []), ...v]);
+      });
+      doc.tracks[k].clips.push(...tr.clips);
+    });
+    pos = r3(pos + b - a);
+  });
+  src.tracks.forEach((tr, k) => {
+    const t = doc.tracks[k], caps = t.clips.filter((c) => c.lines);
+    for (const [id, v] of trackKeys[k]) { const path = JSON.parse(id), key = path.pop(); let o = t; for (const x of path) o = o[x]; o[key] = v; }
+    if (caps.length > 1) {
+      const one = { ...caps[0], at: 0, end: pos, lines: caps.flatMap((c) => c.lines) };
+      // A move (captions lifted off a label) carries over from every stretch, each opening on its own value.
+      for (const k of MOVES) if (caps.some((c) => keyed(c[k]))) one[k] = caps.flatMap((c) => (keyed(c[k]) ? c[k] : c[k] != null ? [[c.at ?? 0, c[k], 'hold']] : []));
+      t.clips = [...t.clips.filter((c) => !c.lines), one];
+    }
+    for (const c of (tr.clips || []).filter((c) => bedOn(tr, c))) t.clips.push({ ...structuredClone(c), end: pos });
+    // A shot stretched back over a scrap past its source's first frame starts on that frame; the shot before holds on.
+    for (const c of t.clips) if (c.src && c.in < 0) {
+      const before = t.clips.find((x) => x !== c && Math.abs((endOf(x) ?? -1) - c.at) < 1e-3);
+      c.at = r3(c.at - c.in / (c.rate ?? 1)); c.in = 0;
+      if (before) before.end = c.at;
+    }
+  });
+  return doc;
+}
+
+// The edit with its stretch [a, b] (every track's layers over it) moved to t, a cut outside it on the same clock;
+// what lay between closes up. edit-video's move, and a talking clip dragged along its track in Studio.
+export function moveStretch(doc, a, b, t) {
+  const total = Math.max(...doc.tracks.flatMap((tr) => (tr.clips || []).map((c) => endOf(c) ?? 0)));
+  const spans = (t <= a ? [[0, t], [a, b], [t, a], [b, total]] : [[0, a], [b, t], [a, b], [t, total]]).filter(([p, q]) => q - p > 1e-3);
+  const out = rearrange(doc, spans);
+  for (const k of ['output', 'duration']) if (doc[k] != null) out[k] = doc[k];
+  return out;
 }

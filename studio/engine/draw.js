@@ -1,6 +1,6 @@
 // Drawing one frame: visual clips, their enter/exit animations, transitions, text and captions.
 import { ease, isVisual, live, srcTime, tin, val } from './doc.js';
-import { gradeAt } from './grade.js';
+import { gradeAt, NEUTRAL } from './grade.js';
 
 // ---- enter / exit animations: state at progress p (0 = hidden, 1 = in place) ----
 const ANIM = {
@@ -62,6 +62,7 @@ function place(ctx, c, t, env, fn) {
   const s = val(c.scale, t, 1) * a.s;
   ctx.scale(s, s);
   ctx.translate(b.x - ox, b.y - oy);
+  if (c.flip) ctx.scale(-1, 1);
   const [x, y, w, h] = fn(b) || [-b.w / 2, -b.h / 2, b.w, b.h];
   if (env.boxes) {
     const m = ctx.getTransform();
@@ -77,24 +78,80 @@ function fitRect(sw, sh, b, fit = 'cover') {
   return [(-sw * s) / 2, (-sh * s) / 2, sw * s, sh * s];
 }
 
-function drawMedia(ctx, c, t, env, frame) {
-  place(ctx, c, t, env, (b) => {
-    const sw = frame.displayWidth ?? frame.width, sh = frame.displayHeight ?? frame.height;
-    const r = fitRect(sw, sh, b, c.fit);
-    if (c.w != null || c.h != null || c.radius) { // crop to the box
-      ctx.beginPath();
-      ctx.roundRect(-b.w / 2, -b.h / 2, b.w, b.h, val(c.radius, t, 0));
-      ctx.clip();
-    }
-    const g = gradeAt(t, c.track.grade, c.grade);
-    if (!g) {
-      if (frame.draw) frame.draw(ctx, ...r); else ctx.drawImage(frame, ...r);
-      return;
-    }
-    // a phone clip's rotation lives in its metadata, which the grader ignores: draw it upright first
-    const vf = frame.rotation ? upright(frame, sw, sh) : frame.toVideoFrame ? frame.toVideoFrame() : frame;
-    try { ctx.drawImage(env.grader.apply(vf, sw, sh, g, Math.round(t * env.fps)), ...r); } finally { if (vf.close && vf !== frame) vf.close(); }
-  });
+// A media clip's or shape's own look around its box: shadow under it, then the box (paint), then a frame outside it.
+// border: { color, width (px, drawn just outside the box, its corners following radius), opacity }; shadow: { color,
+// opacity, blur, x, y }.
+function edges(ctx, c, t, env, b, paint) {
+  const r = val(c.radius, t, 0), sh = c.shadow, bd = c.border;
+  if (sh) {
+    ctx.save();
+    ctx.shadowColor = rgba(sh.color || '#000000', sh.opacity ?? 0.5);
+    ctx.shadowBlur = (sh.blur ?? 0) * env.k; ctx.shadowOffsetX = (sh.x ?? 0) * env.k; ctx.shadowOffsetY = (sh.y ?? 6) * env.k;
+    ctx.fillStyle = '#000000';
+    ctx.beginPath();
+    ctx.roundRect(-b.w / 2, -b.h / 2, b.w, b.h, r);
+    ctx.fill();
+    ctx.restore();
+  }
+  ctx.save();
+  paint(ctx);
+  ctx.restore();
+  const w = bd && (bd.width ?? 4);
+  if (w > 0) {
+    ctx.strokeStyle = rgba(bd.color || '#FFFFFF', bd.opacity ?? 1);
+    ctx.lineWidth = w;
+    ctx.beginPath();
+    ctx.roundRect(-b.w / 2 - w / 2, -b.h / 2 - w / 2, b.w + w, b.h + w, r ? r + w / 2 : 0);
+    ctx.stroke();
+  }
+}
+
+function drawMedia(ctx, c, t, env, frame, matte) {
+  place(ctx, c, t, env, (b) => edges(ctx, c, t, env, b, () => {
+    const paint = (ctx) => {
+      const sw = frame.displayWidth ?? frame.width, sh = frame.displayHeight ?? frame.height;
+      const r = fitRect(sw, sh, b, c.fit);
+      if (c.w != null || c.h != null || c.radius) { // crop to the box
+        ctx.beginPath();
+        ctx.roundRect(-b.w / 2, -b.h / 2, b.w, b.h, val(c.radius, t, 0));
+        ctx.clip();
+      }
+      const g = gradeAt(t, c.track.grade, c.grade) || (matte && NEUTRAL);
+      if (!g) {
+        if (frame.draw) frame.draw(ctx, ...r); else ctx.drawImage(frame, ...r);
+        return;
+      }
+      // a phone clip's rotation lives in its metadata, which the grader ignores: draw it upright first
+      const vf = frame.rotation ? upright(frame, sw, sh) : frame.toVideoFrame ? frame.toVideoFrame() : frame;
+      const mf = matte?.toVideoFrame ? matte.toVideoFrame() : matte;
+      try { ctx.drawImage(env.grader.apply(vf, sw, sh, g, Math.round(t * env.fps), mf), ...r); } finally { if (vf.close && vf !== frame) vf.close(); if (mf?.close && mf !== matte) mf.close(); }
+    };
+    if (c.feather) feather(ctx, c.feather, b, paint); else paint(ctx);
+  }));
+}
+
+// Soft edges: the clip fades into what's under it over f doc px (a number for every edge, or { top, bottom, left, right }).
+// Drawn apart at canvas resolution, then masked, so only this clip fades.
+function feather(ctx, f, b, paint) {
+  if (typeof f === 'number') f = { top: f, bottom: f, left: f, right: f };
+  const m = ctx.getTransform(), k = Math.hypot(m.a, m.b);
+  const W = Math.max(1, Math.round(b.w * k)), H = Math.max(1, Math.round(b.h * k));
+  const oc = new OffscreenCanvas(W, H), o = oc.getContext('2d');
+  o.setTransform(k, 0, 0, k, W / 2, H / 2);
+  paint(o);
+  o.setTransform(1, 0, 0, 1, 0, 0);
+  o.globalCompositeOperation = 'destination-in';
+  for (const [edge, px] of Object.entries(f)) {
+    const d = px * k;
+    if (!(d > 0)) continue;
+    const [x0, y0, x1, y1] = { top: [0, 0, 0, d], bottom: [0, H, 0, H - d], left: [0, 0, d, 0], right: [W, 0, W - d, 0] }[edge];
+    const g = o.createLinearGradient(x0, y0, x1, y1);
+    g.addColorStop(0, 'rgba(0,0,0,0)');
+    g.addColorStop(1, '#000');
+    o.fillStyle = g;
+    o.fillRect(0, 0, W, H);
+  }
+  ctx.drawImage(oc, -b.w / 2, -b.h / 2, b.w, b.h);
 }
 
 let uprightCanvas;
@@ -330,12 +387,12 @@ function drawCaptions(ctx, c, t, env) {
 }
 
 function drawRect(ctx, c, t, env) {
-  place(ctx, c, t, env, (b) => {
+  place(ctx, c, t, env, (b) => edges(ctx, c, t, env, b, () => {
     ctx.fillStyle = val(c.color, t, '#000000');
     ctx.beginPath();
     ctx.roundRect(-b.w / 2, -b.h / 2, b.w, b.h, val(c.radius, t, 0));
     ctx.fill();
-  });
+  }));
 }
 
 // Hides what the tracks below drew inside a box (a competitor's label, a face): x, y (center), w, h; style
@@ -446,7 +503,7 @@ export function drawFrame(ctx, doc, t, frames, env) {
   ctx.fillStyle = doc.background;
   ctx.fillRect(0, 0, doc.W, doc.H);
   const paint = (c) => (x) => {
-    if (c.type === 'video' || c.type === 'image') { const f = frames.get(c.id); if (f) drawMedia(x, c, t, env, f); }
+    if (c.type === 'video' || c.type === 'image') { const f = frames.get(c.id), m = c.matte && frames.get(`${c.id}#matte`); if (f && (m || !c.matte)) drawMedia(x, c, t, env, f, m); }
     else if (c.type === 'text') drawText(x, c, t, env);
     else if (c.type === 'captions') drawCaptions(x, c, t, env);
     else if (c.type === 'rect') drawRect(x, c, t, env);
@@ -478,8 +535,10 @@ export function needs(doc, t, ahead = 0) {
     // Through a transition a clip holds its first and last frames: past its trim the source may already show another shot.
     for (const c of tr.clips) {
       if (c.type !== 'video' && c.type !== 'image') continue;
-      if (live(c, t)) out.push({ c, ts: srcTime(c, Math.min(Math.max(t, c.at), c.end - 1 / doc.fps)) });
-      else if (ahead && c.at - tin(c) / 2 > t && c.at - tin(c) / 2 <= t + ahead) out.push({ c, ts: srcTime(c, c.at), soon: true });
+      // a cut-out clip's matte decodes like a second clip: the same source time, its own decoder
+      const both = (x) => (c.matte ? [x, { ...x, c: { ...c, id: `${c.id}#matte`, src: c.matte } }] : [x]);
+      if (live(c, t)) out.push(...both({ c, ts: srcTime(c, Math.min(Math.max(t, c.at), c.end - 1 / doc.fps)) }));
+      else if (ahead && c.at - tin(c) / 2 > t && c.at - tin(c) / 2 <= t + ahead) out.push(...both({ c, ts: srcTime(c, c.at), soon: true }));
     }
   }
   return out;
